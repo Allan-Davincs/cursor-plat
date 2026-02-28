@@ -1,0 +1,16 @@
+{
+  "name": "InfoX Commerce",
+  "short_name": "InfoX",
+  "description": "Mobile-first e-commerce with realtime updates and WhatsApp support.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0b1020",
+  "theme_color": "#0ea5e9",
+  "icons": [
+    {
+      "src": "/vite.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}
