@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { ShoppingCart, Heart, Star, Eye } from 'lucide-react';
 import { useCart } from '../context/CartContext';
+import { formatPrice } from '../lib/currency';
 
 export default function ProductCard({ product, index = 0 }) {
   const [isHovered, setIsHovered] = useState(false);
@@ -93,9 +94,9 @@ export default function ProductCard({ product, index = 0 }) {
         </div>
 
         <div className="flex items-center gap-2">
-          <span className="text-lg font-bold text-gray-900 dark:text-gray-100">${product.price}</span>
+          <span className="text-lg font-bold text-gray-900 dark:text-gray-100">{formatPrice(product.price)}</span>
           {product.originalPrice > product.price && (
-            <span className="text-sm text-gray-400 line-through">${product.originalPrice}</span>
+            <span className="text-sm text-gray-400 line-through">{formatPrice(product.originalPrice)}</span>
           )}
         </div>
       </Link>
