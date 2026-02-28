@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Plus, Minus, Trash2, ShoppingBag, ArrowRight } from 'lucide-react';
 import { useCart } from '../context/CartContext';
+import { formatPrice } from '../lib/currency';
 
 export default function CartDrawer() {
   const { cart, isCartOpen, setIsCartOpen, updateQuantity, removeFromCart } = useCart();
@@ -81,9 +82,9 @@ export default function CartDrawer() {
                           </Link>
 
                           <div className="flex items-center gap-2 mt-1">
-                            <span className="text-sm font-bold text-primary-600">${item.price}</span>
+                            <span className="text-sm font-bold text-primary-600">{formatPrice(item.price)}</span>
                             {item.originalPrice > item.price && (
-                              <span className="text-xs text-gray-400 line-through">${item.originalPrice}</span>
+                              <span className="text-xs text-gray-400 line-through">{formatPrice(item.originalPrice)}</span>
                             )}
                           </div>
 
@@ -120,10 +121,10 @@ export default function CartDrawer() {
                 {!cart.freeShippingEligible && (
                   <div className="mx-6 p-3 bg-primary-50 dark:bg-primary-900/20 rounded-xl text-center">
                     <p className="text-sm text-primary-700 dark:text-primary-300">
-                      Add <span className="font-bold">${(100 - cart.subtotal).toFixed(2)}</span> more for free shipping!
+                      Add <span className="font-bold">{formatPrice((cart.freeShippingThreshold || 250000) - cart.subtotal)}</span> more for free shipping!
                     </p>
                     <div className="mt-2 h-1.5 bg-primary-100 dark:bg-primary-900/30 rounded-full overflow-hidden">
-                      <div className="h-full bg-primary-500 rounded-full transition-all" style={{ width: `${Math.min(100, (cart.subtotal / 100) * 100)}%` }} />
+                      <div className="h-full bg-primary-500 rounded-full transition-all" style={{ width: `${Math.min(100, (cart.subtotal / (cart.freeShippingThreshold || 250000)) * 100)}%` }} />
                     </div>
                   </div>
                 )}
@@ -132,25 +133,25 @@ export default function CartDrawer() {
                   <div className="space-y-2 text-sm">
                     <div className="flex justify-between text-gray-500 dark:text-gray-400">
                       <span>Subtotal</span>
-                      <span>${cart.subtotal?.toFixed(2)}</span>
+                      <span>{formatPrice(cart.subtotal)}</span>
                     </div>
                     {cart.savings > 0 && (
                       <div className="flex justify-between text-green-600">
                         <span>Savings</span>
-                        <span>-${cart.savings?.toFixed(2)}</span>
+                        <span>-{formatPrice(cart.savings)}</span>
                       </div>
                     )}
                     <div className="flex justify-between text-gray-500 dark:text-gray-400">
                       <span>Shipping</span>
-                      <span>{cart.shipping === 0 ? <span className="text-green-600 font-semibold">Free</span> : `$${cart.shipping?.toFixed(2)}`}</span>
+                      <span>{cart.shipping === 0 ? <span className="text-green-600 font-semibold">Free</span> : formatPrice(cart.shipping)}</span>
                     </div>
                     <div className="flex justify-between text-gray-500 dark:text-gray-400">
                       <span>Tax</span>
-                      <span>${cart.tax?.toFixed(2)}</span>
+                      <span>{formatPrice(cart.tax)}</span>
                     </div>
                     <div className="flex justify-between text-lg font-bold pt-2 border-t border-gray-100 dark:border-gray-800">
                       <span>Total</span>
-                      <span>${cart.total?.toFixed(2)}</span>
+                      <span>{formatPrice(cart.total)}</span>
                     </div>
                   </div>
 

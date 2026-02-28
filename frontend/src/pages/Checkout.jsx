@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import { CreditCard, Truck, ArrowLeft, Lock, ShoppingBag, Smartphone, Zap } from 'lucide-react';
 import { useCart } from '../context/CartContext';
 import { orderApi, paymentApi } from '../lib/api';
+import { formatPrice } from '../lib/currency';
 import toast from 'react-hot-toast';
 
 const methodIcons = {
@@ -280,7 +281,7 @@ export default function Checkout() {
                           Processing...
                         </span>
                       ) : (
-                        `Pay $${cart.total?.toFixed(2)}`
+                        `Pay ${formatPrice(cart.total)}`
                       )}
                     </button>
                   </div>
@@ -303,27 +304,27 @@ export default function Checkout() {
                       <p className="text-sm font-medium truncate">{item.name}</p>
                       <p className="text-xs text-gray-500 dark:text-gray-400">Qty: {item.quantity}</p>
                     </div>
-                    <p className="text-sm font-semibold">${(item.price * item.quantity).toFixed(2)}</p>
+                    <p className="text-sm font-semibold">{formatPrice(item.price * item.quantity)}</p>
                   </div>
                 ))}
               </div>
               <div className="space-y-2 text-sm border-t border-gray-100 dark:border-gray-800 pt-4">
                 <div className="flex justify-between text-gray-500 dark:text-gray-400">
-                  <span>Subtotal</span><span>${cart.subtotal?.toFixed(2)}</span>
+                  <span>Subtotal</span><span>{formatPrice(cart.subtotal)}</span>
                 </div>
                 {cart.savings > 0 && (
                   <div className="flex justify-between text-green-600">
-                    <span>Savings</span><span>-${cart.savings?.toFixed(2)}</span>
+                    <span>Savings</span><span>-{formatPrice(cart.savings)}</span>
                   </div>
                 )}
                 <div className="flex justify-between text-gray-500 dark:text-gray-400">
-                  <span>Shipping</span><span>{cart.shipping === 0 ? 'Free' : `$${cart.shipping?.toFixed(2)}`}</span>
+                  <span>Shipping</span><span>{cart.shipping === 0 ? 'Free' : formatPrice(cart.shipping)}</span>
                 </div>
                 <div className="flex justify-between text-gray-500 dark:text-gray-400">
-                  <span>Tax</span><span>${cart.tax?.toFixed(2)}</span>
+                  <span>Tax</span><span>{formatPrice(cart.tax)}</span>
                 </div>
                 <div className="flex justify-between text-lg font-bold pt-3 border-t border-gray-100 dark:border-gray-800">
-                  <span>Total</span><span>${cart.total?.toFixed(2)}</span>
+                  <span>Total</span><span>{formatPrice(cart.total)}</span>
                 </div>
               </div>
             </div>

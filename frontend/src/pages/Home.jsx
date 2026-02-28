@@ -133,7 +133,7 @@ export default function Home() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
             {[
-              { icon: Truck, title: 'Free Shipping', desc: 'Orders over $100' },
+              { icon: Truck, title: 'Free Shipping', desc: 'Orders over 250,000 TZS' },
               { icon: Shield, title: 'Secure Payment', desc: '100% protected' },
               { icon: Headphones, title: '24/7 Support', desc: 'Always here for you' },
               { icon: Star, title: 'Top Quality', desc: 'Premium materials' },

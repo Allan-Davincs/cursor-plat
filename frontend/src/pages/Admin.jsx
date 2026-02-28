@@ -5,6 +5,7 @@ import {
   AlertTriangle, Users, Eye, ChevronDown, RefreshCw, Edit2, Save, X
 } from 'lucide-react';
 import { adminApi, whatsappApi } from '../lib/api';
+import { formatPrice } from '../lib/currency';
 import LoadingSpinner from '../components/LoadingSpinner';
 import toast from 'react-hot-toast';
 
@@ -120,7 +121,7 @@ export default function Admin() {
               <motion.div key="dashboard" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
                   {[
-                    { label: 'Total Revenue', value: `$${dashboard.stats.totalRevenue.toLocaleString()}`, icon: DollarSign, color: 'text-green-600 bg-green-50 dark:bg-green-900/20' },
+                    { label: 'Total Revenue', value: formatPrice(dashboard.stats.totalRevenue), icon: DollarSign, color: 'text-green-600 bg-green-50 dark:bg-green-900/20' },
                     { label: 'Total Orders', value: dashboard.stats.totalOrders, icon: ShoppingCart, color: 'text-primary-600 bg-primary-50 dark:bg-primary-900/20' },
                     { label: 'Products', value: dashboard.stats.totalProducts, icon: Package, color: 'text-accent-600 bg-accent-50 dark:bg-accent-900/20' },
                     { label: 'Low Stock', value: dashboard.stats.lowStockProducts, icon: AlertTriangle, color: 'text-amber-600 bg-amber-50 dark:bg-amber-900/20' },
@@ -157,7 +158,7 @@ export default function Admin() {
                               <p className="text-sm font-medium truncate">{p.name}</p>
                               <p className="text-xs text-gray-500 dark:text-gray-400">{p.sold} sold</p>
                             </div>
-                            <span className="text-sm font-bold">${p.revenue.toFixed(2)}</span>
+                            <span className="text-sm font-bold">{formatPrice(p.revenue)}</span>
                           </div>
                         ))}
                       </div>
@@ -177,7 +178,7 @@ export default function Admin() {
                               <p className="text-xs text-gray-500 dark:text-gray-400">{order.customer.name}</p>
                             </div>
                             <div className="text-right">
-                              <p className="text-sm font-bold">${order.total.toFixed(2)}</p>
+                              <p className="text-sm font-bold">{formatPrice(order.total)}</p>
                               <span className={`text-xs font-medium ${
                                 order.status === 'confirmed' ? 'text-green-600' : order.status === 'pending' ? 'text-amber-600' : 'text-primary-600'
                               }`}>
@@ -212,7 +213,7 @@ export default function Admin() {
                             <p className="text-xs text-gray-400 mt-1">{new Date(order.createdAt).toLocaleString()}</p>
                           </div>
                           <div className="flex items-center gap-3">
-                            <span className="text-lg font-bold">${order.total.toFixed(2)}</span>
+                            <span className="text-lg font-bold">{formatPrice(order.total)}</span>
                             {editingOrder === order.id ? (
                               <div className="flex items-center gap-2">
                                 <select
@@ -286,7 +287,7 @@ export default function Admin() {
                             </button>
                           </div>
                           <div className="flex flex-wrap items-center gap-4 mt-2 text-sm">
-                            <span className="font-bold text-lg">${product.price}</span>
+                            <span className="font-bold text-lg">{formatPrice(product.price)}</span>
                             <span className={`badge px-2 py-1 rounded-lg ${product.stock < 10 ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' : 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'}`}>
                               Stock: {product.stock}
                             </span>
