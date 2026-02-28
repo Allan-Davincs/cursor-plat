@@ -56,9 +56,9 @@ export default function OrderConfirmation() {
           >
             <CheckCircle className="w-10 h-10 text-green-500" />
           </motion.div>
-          <h1 className="text-3xl font-bold mb-2">Order Confirmed!</h1>
+          <h1 className="text-3xl font-bold mb-2">Oda Imethibitishwa!</h1>
           <p className="text-gray-500 dark:text-gray-400">
-            Thank you for your order. We'll notify you when it ships.
+            Asante kwa oda yako. Utapata taarifa kupitia WhatsApp wakati bidhaa zitakapotumwa.
           </p>
         </motion.div>
 
@@ -136,15 +136,22 @@ export default function OrderConfirmation() {
           </div>
         </div>
 
+        {whatsappUrl && (
+          <a
+            href={whatsappUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center justify-center gap-3 w-full px-8 py-5 mb-4 bg-green-500 text-white font-bold text-lg rounded-2xl hover:bg-green-600 active:scale-[0.98] transition-all shadow-xl shadow-green-500/30"
+          >
+            <MessageCircle className="w-6 h-6" />
+            Pata Taarifa Kupitia WhatsApp
+          </a>
+        )}
+
         <div className="flex flex-col sm:flex-row gap-4">
           <Link to="/products" className="btn-primary flex-1">
-            Continue Shopping <ArrowRight className="w-4 h-4" />
+            Endelea Kununua <ArrowRight className="w-4 h-4" />
           </Link>
-          {whatsappUrl && (
-            <a href={whatsappUrl} target="_blank" rel="noopener noreferrer" className="btn-secondary flex-1 !bg-green-500 !text-white hover:!bg-green-600">
-              <MessageCircle className="w-4 h-4" /> Get Updates on WhatsApp
-            </a>
-          )}
         </div>
       </div>
     </div>

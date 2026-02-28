@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { ArrowRight, Sparkles, Truck, Shield, Headphones, Star, ChevronRight } from 'lucide-react';
+import { ArrowRight, Sparkles, Truck, Shield, Headphones, Star, ChevronRight, MessageCircle } from 'lucide-react';
 import { productApi } from '../lib/api';
 import ProductCard from '../components/ProductCard';
+import WhatsAppButton from '../components/WhatsAppButton';
 import LoadingSpinner from '../components/LoadingSpinner';
 
 export default function Home() {
@@ -230,26 +231,60 @@ export default function Home() {
         </div>
       </section>
 
-      {/* CTA */}
+      {/* WhatsApp CTA */}
       <section className="py-20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             whileInView={{ opacity: 1, scale: 1 }}
             viewport={{ once: true }}
-            className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-primary-600 to-accent-600 p-10 md:p-16 text-center text-white"
+            className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-green-500 to-green-700 p-10 md:p-16 text-white"
           >
-            <div className="absolute top-0 left-0 w-full h-full bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxnIGZpbGw9IiNmZmYiIGZpbGwtb3BhY2l0eT0iLjA1Ij48cGF0aCBkPSJNMzYgMzRjMC0yIDItNCA0LTRzNCAxLjggNCA0LTIgNC00IDQtNC0yLTQtNHptMC0yNGMwLTIgMi00IDQtNHM0IDIgNCA0LTIgNC00IDQtNC0yLTQtNHoiLz48L2c+PC9nPjwvc3ZnPg==')] opacity-30" />
-            <div className="relative">
-              <h2 className="text-3xl md:text-4xl font-bold mb-4">Join Our Community</h2>
-              <p className="text-lg text-white/80 mb-8 max-w-xl mx-auto">
-                Get exclusive deals, early access to new products, and personalized recommendations. Chat with us on WhatsApp!
-              </p>
-              <div className="flex flex-wrap items-center justify-center gap-4">
-                <Link to="/products" className="inline-flex items-center gap-2 px-8 py-4 bg-white text-primary-700 font-semibold rounded-xl hover:bg-gray-100 active:scale-[0.98] transition-all shadow-lg">
-                  Start Shopping
-                  <ArrowRight className="w-5 h-5" />
-                </Link>
+            <div className="absolute top-0 right-0 w-96 h-96 bg-green-400/20 rounded-full blur-3xl -translate-y-1/2 translate-x-1/3" />
+            <div className="absolute bottom-0 left-0 w-64 h-64 bg-green-300/10 rounded-full blur-3xl translate-y-1/2 -translate-x-1/3" />
+
+            <div className="relative grid md:grid-cols-2 gap-10 items-center">
+              <div>
+                <div className="inline-flex items-center gap-2 px-4 py-2 bg-white/10 rounded-full text-sm font-medium mb-6 backdrop-blur-sm">
+                  <MessageCircle className="w-4 h-4" />
+                  WhatsApp Ndio Njia Yetu Kuu
+                </div>
+                <h2 className="text-3xl md:text-4xl font-bold mb-4">Nunua Moja kwa Moja Kupitia WhatsApp!</h2>
+                <p className="text-lg text-white/80 mb-8 leading-relaxed">
+                  Tuandikie "hi" kwenye WhatsApp upate msaada, tazama bidhaa, fuatilia oda yako, na upate deal za kipekee. Tunajibu haraka sana!
+                </p>
+                <div className="flex flex-wrap items-center gap-4">
+                  <WhatsAppButton variant="hero" />
+                  <Link to="/products" className="inline-flex items-center gap-2 px-8 py-4 bg-white/10 text-white font-semibold rounded-xl hover:bg-white/20 active:scale-[0.98] transition-all backdrop-blur-sm border border-white/20">
+                    Tazama Bidhaa
+                    <ArrowRight className="w-5 h-5" />
+                  </Link>
+                </div>
+              </div>
+
+              <div className="hidden md:flex flex-col items-center">
+                <div className="bg-white rounded-3xl p-6 shadow-2xl max-w-xs">
+                  <div className="flex items-center gap-3 mb-4 pb-3 border-b border-gray-100">
+                    <div className="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center">
+                      <MessageCircle className="w-5 h-5 text-white" />
+                    </div>
+                    <div>
+                      <p className="font-bold text-gray-900 text-sm">ShopHub</p>
+                      <p className="text-xs text-green-600">Online sasa</p>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="bg-green-50 rounded-2xl rounded-tl-md p-3 max-w-[85%]">
+                      <p className="text-sm text-gray-800">Habari! 👋 Karibu ShopHub. Nikusaidie nini leo?</p>
+                    </div>
+                    <div className="bg-gray-100 rounded-2xl rounded-tr-md p-3 max-w-[75%] ml-auto">
+                      <p className="text-sm text-gray-800">products</p>
+                    </div>
+                    <div className="bg-green-50 rounded-2xl rounded-tl-md p-3 max-w-[85%]">
+                      <p className="text-sm text-gray-800">🛍️ <strong>Featured Products</strong><br />1. Premium Headphones<br />2. Leather Watch...</p>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </motion.div>
