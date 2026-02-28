@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Package, ShoppingCart, DollarSign, TrendingUp,
   AlertTriangle, Users, Eye, ChevronDown, RefreshCw, Edit2, Save, X
 } from 'lucide-react';
-import { adminApi } from '../lib/api';
+import { adminApi, whatsappApi } from '../lib/api';
 import LoadingSpinner from '../components/LoadingSpinner';
 import toast from 'react-hot-toast';
 
@@ -60,6 +60,20 @@ export default function Admin() {
       fetchData();
     } catch {
       toast.error('Failed to update product');
+    }
+  };
+
+  const sendWhatsAppUpdate = async (orderId) => {
+    try {
+      const { data } = await whatsappApi.sendOrderNotification(orderId);
+      if (data.sent) {
+        toast.success('WhatsApp notification sent!');
+      } else if (data.fallback && data.whatsappUrl) {
+        window.open(data.whatsappUrl, '_blank');
+        toast.success('Opening WhatsApp...');
+      }
+    } catch {
+      toast.error('Failed to send notification');
     }
   };
 
@@ -229,7 +243,7 @@ export default function Admin() {
                             )}
                           </div>
                         </div>
-                        <div className="flex flex-wrap gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
                           {order.items.map(item => (
                             <div key={item.productId} className="flex items-center gap-2 px-3 py-1.5 bg-gray-50 dark:bg-gray-800 rounded-lg text-xs">
                               <img src={item.image} alt="" className="w-6 h-6 rounded object-cover" />
@@ -237,6 +251,12 @@ export default function Admin() {
                               <span className="text-gray-400">x{item.quantity}</span>
                             </div>
                           ))}
+                          <button
+                            onClick={() => sendWhatsAppUpdate(order.id)}
+                            className="flex items-center gap-1.5 px-3 py-1.5 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 rounded-lg text-xs font-medium hover:bg-green-100 dark:hover:bg-green-900/30 transition-colors"
+                          >
+                            📱 WhatsApp Update
+                          </button>
                         </div>
                       </div>
                     ))}

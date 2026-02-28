@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api/v1';
 
 const api = axios.create({
   baseURL: API_BASE,
@@ -40,13 +40,16 @@ export const orderApi = {
 };
 
 export const paymentApi = {
-  initiate: (orderId) => api.post('/payments/initiate', { orderId }),
+  getMethods: () => api.get('/payments/methods'),
+  initiate: (orderId, method, phoneNumber) => api.post('/payments/initiate', { orderId, method, phoneNumber }),
+  getStatus: (paymentId) => api.get(`/payments/status/${paymentId}`),
 };
 
 export const whatsappApi = {
   getQrData: () => api.get('/whatsapp/qr-data'),
   getProductLink: (productId) => api.get(`/whatsapp/product-link/${productId}`),
   getOrderUpdate: (orderId) => api.get(`/whatsapp/order-update/${orderId}`),
+  sendOrderNotification: (orderId) => api.post('/whatsapp/send-order-notification', { orderId }),
 };
 
 export const adminApi = {

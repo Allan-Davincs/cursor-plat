@@ -1,20 +1,41 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { CreditCard, Truck, ArrowLeft, Lock, ShoppingBag } from 'lucide-react';
+import { CreditCard, Truck, ArrowLeft, Lock, ShoppingBag, Smartphone, Zap } from 'lucide-react';
 import { useCart } from '../context/CartContext';
 import { orderApi, paymentApi } from '../lib/api';
 import toast from 'react-hot-toast';
+
+const methodIcons = {
+  'credit-card': CreditCard,
+  'smartphone': Smartphone,
+  'zap': Zap
+};
 
 export default function Checkout() {
   const { cart, clearCart } = useCart();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [step, setStep] = useState(1);
+  const [paymentMethods, setPaymentMethods] = useState([]);
+  const [selectedMethod, setSelectedMethod] = useState('');
+  const [mobilePhone, setMobilePhone] = useState('');
   const [form, setForm] = useState({
     name: '', email: '', phone: '',
-    address: '', city: '', state: '', zip: '', country: 'US'
+    address: '', city: '', state: '', zip: '', country: 'TZ'
   });
+
+  useEffect(() => {
+    paymentApi.getMethods()
+      .then(({ data }) => {
+        setPaymentMethods(data.methods);
+        if (data.methods.length > 0) setSelectedMethod(data.methods[0].id);
+      })
+      .catch(() => {
+        setPaymentMethods([{ id: 'demo', name: 'Demo Payment', description: 'Simulated payment', icon: 'zap', enabled: true }]);
+        setSelectedMethod('demo');
+      });
+  }, []);
 
   const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
 
@@ -25,6 +46,7 @@ export default function Checkout() {
         toast.error('Please fill in all required fields');
         return;
       }
+      setMobilePhone(form.phone);
       setStep(2);
       return;
     }
@@ -37,18 +59,34 @@ export default function Checkout() {
           email: form.email,
           phone: form.phone,
           address: { street: form.address, city: form.city, state: form.state, zip: form.zip, country: form.country }
-        }
+        },
+        paymentMethod: selectedMethod
       });
 
-      const { data: payment } = await paymentApi.initiate(order.id);
+      const phone = selectedMethod === 'snippe-mobile' ? mobilePhone : undefined;
+      const { data: payment } = await paymentApi.initiate(order.id, selectedMethod, phone);
 
       if (payment.paymentUrl) {
         window.location.href = payment.paymentUrl;
-      } else {
+        return;
+      }
+
+      if (payment.status === 'confirmed' || payment.provider === 'demo') {
         await clearCart();
         toast.success('Order placed successfully!', { duration: 5000 });
         navigate(`/order-confirmation/${order.id}`);
+        return;
       }
+
+      if (payment.type === 'mobile') {
+        toast.success(payment.message || 'Check your phone for the payment prompt', { duration: 8000, icon: '📱' });
+        await clearCart();
+        navigate(`/order-confirmation/${order.id}`);
+        return;
+      }
+
+      await clearCart();
+      navigate(`/order-confirmation/${order.id}`);
     } catch (err) {
       toast.error(err.response?.data?.error || 'Failed to process order');
     } finally {
@@ -111,8 +149,8 @@ export default function Checkout() {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium mb-1.5">Phone *</label>
-                    <input name="phone" type="tel" value={form.phone} onChange={handleChange} className="input-field" required placeholder="+1 (234) 567-890" />
+                    <label className="block text-sm font-medium mb-1.5">Phone * <span className="text-gray-400 font-normal">(used for mobile money & WhatsApp updates)</span></label>
+                    <input name="phone" type="tel" value={form.phone} onChange={handleChange} className="input-field" required placeholder="+255 6XX XXX XXX" />
                   </div>
 
                   <div>
@@ -123,15 +161,15 @@ export default function Checkout() {
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
                     <div>
                       <label className="block text-sm font-medium mb-1.5">City</label>
-                      <input name="city" value={form.city} onChange={handleChange} className="input-field" placeholder="City" />
+                      <input name="city" value={form.city} onChange={handleChange} className="input-field" placeholder="Dar es Salaam" />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium mb-1.5">State</label>
-                      <input name="state" value={form.state} onChange={handleChange} className="input-field" placeholder="State" />
+                      <label className="block text-sm font-medium mb-1.5">Region</label>
+                      <input name="state" value={form.state} onChange={handleChange} className="input-field" placeholder="DSM" />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium mb-1.5">ZIP Code</label>
-                      <input name="zip" value={form.zip} onChange={handleChange} className="input-field" placeholder="12345" />
+                      <label className="block text-sm font-medium mb-1.5">Postal Code</label>
+                      <input name="zip" value={form.zip} onChange={handleChange} className="input-field" placeholder="14101" />
                     </div>
                   </div>
 
@@ -143,12 +181,78 @@ export default function Checkout() {
 
               {step === 2 && (
                 <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="card p-6 space-y-5">
-                  <h2 className="text-xl font-bold flex items-center gap-2"><CreditCard className="w-5 h-5" /> Payment</h2>
+                  <h2 className="text-xl font-bold flex items-center gap-2"><CreditCard className="w-5 h-5" /> Payment Method</h2>
+
+                  <div className="space-y-3">
+                    {paymentMethods.map(method => {
+                      const Icon = methodIcons[method.icon] || CreditCard;
+                      return (
+                        <label
+                          key={method.id}
+                          className={`flex items-center gap-4 p-4 rounded-xl border-2 cursor-pointer transition-all ${
+                            selectedMethod === method.id
+                              ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20'
+                              : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
+                          }`}
+                        >
+                          <input
+                            type="radio"
+                            name="paymentMethod"
+                            value={method.id}
+                            checked={selectedMethod === method.id}
+                            onChange={() => setSelectedMethod(method.id)}
+                            className="sr-only"
+                          />
+                          <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
+                            selectedMethod === method.id
+                              ? 'bg-primary-100 text-primary-600 dark:bg-primary-900/30 dark:text-primary-400'
+                              : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'
+                          }`}>
+                            <Icon className="w-5 h-5" />
+                          </div>
+                          <div className="flex-1">
+                            <p className="font-semibold text-sm">{method.name}</p>
+                            <p className="text-xs text-gray-500 dark:text-gray-400">{method.description}</p>
+                            {method.providers && (
+                              <div className="flex gap-1.5 mt-1.5">
+                                {method.providers.map(p => (
+                                  <span key={p} className="badge bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 text-[10px] uppercase px-2 py-0.5 rounded-md">
+                                    {p}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                          <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
+                            selectedMethod === method.id ? 'border-primary-500' : 'border-gray-300 dark:border-gray-600'
+                          }`}>
+                            {selectedMethod === method.id && <div className="w-2.5 h-2.5 rounded-full bg-primary-500" />}
+                          </div>
+                        </label>
+                      );
+                    })}
+                  </div>
+
+                  {selectedMethod === 'snippe-mobile' && (
+                    <div>
+                      <label className="block text-sm font-medium mb-1.5">Mobile Money Number</label>
+                      <input
+                        type="tel"
+                        value={mobilePhone}
+                        onChange={e => setMobilePhone(e.target.value)}
+                        className="input-field"
+                        placeholder="+255 6XX XXX XXX"
+                      />
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                        You'll receive a USSD prompt on this number to confirm payment
+                      </p>
+                    </div>
+                  )}
 
                   <div className="p-4 bg-primary-50 dark:bg-primary-900/20 rounded-xl border border-primary-100 dark:border-primary-800">
                     <p className="text-sm text-primary-700 dark:text-primary-300">
                       <Lock className="w-4 h-4 inline mr-1" />
-                      Payment is processed securely via Briq. In demo mode, orders are auto-confirmed.
+                      Your payment is processed securely. We never store your payment details.
                     </p>
                   </div>
 
@@ -170,7 +274,14 @@ export default function Checkout() {
                       Back
                     </button>
                     <button type="submit" disabled={loading} className="btn-primary flex-1 py-4">
-                      {loading ? 'Processing...' : `Pay $${cart.total?.toFixed(2)}`}
+                      {loading ? (
+                        <span className="flex items-center gap-2">
+                          <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                          Processing...
+                        </span>
+                      ) : (
+                        `Pay $${cart.total?.toFixed(2)}`
+                      )}
                     </button>
                   </div>
                 </motion.div>

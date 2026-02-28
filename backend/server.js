@@ -26,15 +26,23 @@ app.use(cors({ origin: process.env.FRONTEND_URL || '*' }));
 app.use(bodyParser.json());
 app.use(express.static('public'));
 
-app.use('/api/products', productRoutes);
-app.use('/api/orders', orderRoutes);
-app.use('/api/cart', cartRoutes);
-app.use('/api/payments', paymentRoutes);
-app.use('/api/whatsapp', whatsappRoutes);
-app.use('/api/admin', adminRoutes);
+app.use('/api/v1/products', productRoutes);
+app.use('/api/v1/orders', orderRoutes);
+app.use('/api/v1/cart', cartRoutes);
+app.use('/api/v1/payments', paymentRoutes);
+app.use('/api/v1/whatsapp', whatsappRoutes);
+app.use('/api/v1/admin', adminRoutes);
 
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+app.get('/api/v1/health', (req, res) => {
+  res.json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    services: {
+      briq: !!process.env.BRIQ_API_KEY,
+      snippe: !!process.env.SNIPPE_API_KEY,
+      whatsapp: process.env.WHATSAPP_PHONE || 'not configured'
+    }
+  });
 });
 
 app.use((err, req, res, _next) => {
@@ -45,6 +53,9 @@ app.use((err, req, res, _next) => {
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
+  console.log(`Briq API: ${process.env.BRIQ_BASE_URL || 'not configured'}`);
+  console.log(`Snippe API: ${process.env.SNIPPE_BASE_URL || 'not configured'}`);
+  console.log(`WhatsApp: ${process.env.WHATSAPP_PHONE || 'not configured'}`);
 });
 
 module.exports = app;

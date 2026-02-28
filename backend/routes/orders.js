@@ -1,9 +1,10 @@
 const express = require('express');
 const router = express.Router();
+const axios = require('axios');
 const { orders, carts, products, generateOrderId } = require('../data/store');
 
-router.post('/', (req, res) => {
-  const { customer, paymentMethod = 'briq', sessionId = 'default' } = req.body;
+router.post('/', async (req, res) => {
+  const { customer, paymentMethod = 'auto', sessionId = 'default' } = req.body;
 
   if (!customer || !customer.name || !customer.email || !customer.phone) {
     return res.status(400).json({ error: 'Customer name, email, and phone are required' });
@@ -33,6 +34,8 @@ router.post('/', (req, res) => {
     tax: Math.round(tax * 100) / 100,
     total: Math.round(total * 100) / 100,
     paymentMethod,
+    paymentProvider: null,
+    paymentId: null,
     status: 'pending',
     statusHistory: [
       { status: 'pending', timestamp: new Date().toISOString(), note: 'Order placed' }
@@ -43,6 +46,14 @@ router.post('/', (req, res) => {
 
   orders.push(order);
   cart.items = [];
+
+  try {
+    await axios.post(`http://localhost:${process.env.PORT || 5000}/api/v1/whatsapp/send-order-notification`, {
+      orderId: order.id
+    }, { timeout: 5000 });
+  } catch {
+    // Non-blocking; notification failure shouldn't break order creation
+  }
 
   res.status(201).json(order);
 });
