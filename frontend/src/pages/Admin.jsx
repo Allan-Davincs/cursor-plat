@@ -179,10 +179,10 @@ export default function Admin() {
                             </div>
                             <div className="text-right">
                               <p className="text-sm font-bold">{formatPrice(order.total)}</p>
-                              <span className={`text-xs font-medium ${
-                                order.status === 'confirmed' ? 'text-green-600' : order.status === 'pending' ? 'text-amber-600' : 'text-primary-600'
+                              <span className={`text-xs font-bold ${
+                                order.status === 'confirmed' ? 'text-green-600' : order.status === 'pending' ? 'text-amber-600' : order.status === 'cancelled' ? 'text-red-500' : 'text-primary-600'
                               }`}>
-                                {order.status}
+                                {order.status === 'confirmed' ? '✅ Imelipwa' : order.status === 'pending' ? '⏳ Haijalipwa' : order.status === 'cancelled' ? '❌' : order.status}
                               </span>
                             </div>
                           </div>
@@ -237,7 +237,7 @@ export default function Admin() {
                                   order.status === 'cancelled' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' :
                                   'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400'
                                 }`}>
-                                  {order.status}
+                                  {order.status === 'confirmed' ? '✅ Imelipwa' : order.status === 'pending' ? '⏳ Haijalipwa' : order.status === 'cancelled' ? '❌ Imeshindwa' : order.status}
                                 </span>
                                 <Edit2 className="w-3.5 h-3.5 text-gray-400" />
                               </button>

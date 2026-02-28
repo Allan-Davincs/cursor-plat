@@ -1,16 +1,28 @@
 const express = require('express');
 const router = express.Router();
 const axios = require('axios');
-const crypto = require('crypto');
 const { v4: uuidv4 } = require('uuid');
 const { orders } = require('../data/store');
 
+const SNIPPE_KEY = process.env.SNIPPE_API_KEY;
+const SNIPPE_URL = process.env.SNIPPE_API_URL;
 const BRIQ_URL = process.env.BRIQ_API_URL;
 const BRIQ_KEY = process.env.BRIQ_API_KEY;
-const SNIPPE_URL = process.env.SNIPPE_API_URL;
-const SNIPPE_KEY = process.env.SNIPPE_API_KEY;
 const CURRENCY = process.env.CURRENCY || 'TZS';
 const APP_NAME = process.env.APP_NAME || 'ShopHub';
+
+const SNIPPE_ENDPOINTS = [
+  SNIPPE_URL ? `${SNIPPE_URL}/v1/payments` : null,
+  'https://api.snippe.sh/v1/payments',
+].filter(Boolean);
+
+function snippeHeaders() {
+  return {
+    'Authorization': `Bearer ${SNIPPE_KEY}`,
+    'Content-Type': 'application/json',
+    'Idempotency-Key': uuidv4()
+  };
+}
 
 function briqHeaders() {
   return {
@@ -21,50 +33,42 @@ function briqHeaders() {
   };
 }
 
-function snippeHeaders() {
-  return {
-    'Authorization': `Bearer ${SNIPPE_KEY}`,
-    'Content-Type': 'application/json',
-    'Idempotency-Key': uuidv4()
-  };
-}
-
 function getWebhookUrl() {
   return process.env.PAYMENT_WEBHOOK_URL
     || `http://localhost:${process.env.PORT || 5000}/api/v1/payments/webhook`;
 }
 
+function formatPhone(phone) {
+  let clean = phone.replace(/[^0-9]/g, '');
+  if (clean.startsWith('0')) clean = '255' + clean.substring(1);
+  if (!clean.startsWith('255')) clean = '255' + clean;
+  return clean;
+}
+
+// ── Payment methods ────────────────────────────────────────────────
 router.get('/methods', (req, res) => {
   const methods = [];
 
-  if (BRIQ_KEY && BRIQ_URL) {
+  if (SNIPPE_KEY) {
     methods.push({
-      id: 'briq',
-      name: 'Briq Payment',
-      description: 'Lipa kwa kadi au mobile wallet kupitia Briq',
-      icon: 'credit-card',
-      enabled: true
+      id: 'mobile-money',
+      name: 'Mobile Money',
+      description: 'Lipa kwa M-Pesa, Airtel Money, Halotel, au Mixx',
+      icon: 'smartphone',
+      enabled: true,
+      primary: true,
+      providers: ['mpesa', 'airtel', 'halotel', 'mixx']
     });
   }
 
-  if (SNIPPE_KEY && SNIPPE_URL) {
-    methods.push(
-      {
-        id: 'snippe-mobile',
-        name: 'Mobile Money',
-        description: 'Lipa kwa M-Pesa, Airtel Money, au Halotel',
-        icon: 'smartphone',
-        enabled: true,
-        providers: ['mpesa', 'airtel', 'halotel', 'mixx']
-      },
-      {
-        id: 'snippe-card',
-        name: 'Card Payment',
-        description: 'Lipa kwa Visa au Mastercard',
-        icon: 'credit-card',
-        enabled: true
-      }
-    );
+  if (BRIQ_KEY && BRIQ_URL) {
+    methods.push({
+      id: 'card',
+      name: 'Card / Online',
+      description: 'Lipa kwa Visa au Mastercard',
+      icon: 'credit-card',
+      enabled: true
+    });
   }
 
   if (methods.length === 0) {
@@ -80,154 +84,43 @@ router.get('/methods', (req, res) => {
   res.json({ methods });
 });
 
+// ── Initiate payment ───────────────────────────────────────────────
 router.post('/initiate', async (req, res) => {
-  const { orderId, method = 'auto', phoneNumber } = req.body;
+  const { orderId, method = 'mobile-money', phoneNumber } = req.body;
   const order = orders.find(o => o.id === orderId);
   if (!order) return res.status(404).json({ error: 'Order not found' });
 
-  try {
-    if (method === 'snippe-mobile' && SNIPPE_KEY && SNIPPE_URL) {
-      return await initiateSnippeMobile(order, phoneNumber || order.customer.phone, res);
-    }
-    if (method === 'snippe-card' && SNIPPE_KEY && SNIPPE_URL) {
-      return await initiateSnippeCard(order, res);
-    }
-    if ((method === 'briq' || method === 'auto') && BRIQ_KEY && BRIQ_URL) {
-      return await initiateBriq(order, res);
-    }
-    if (method === 'auto' && SNIPPE_KEY && SNIPPE_URL) {
-      return await initiateSnippeCard(order, res);
-    }
+  const payPhone = phoneNumber || order.customer.phone;
 
+  try {
+    if ((method === 'mobile-money' || method === 'auto') && SNIPPE_KEY) {
+      return await initiateMobileMoney(order, payPhone, res);
+    }
+    if (method === 'card' && BRIQ_KEY && BRIQ_URL) {
+      return await initiateBriqCard(order, res);
+    }
     return processDemoPayment(order, res);
   } catch (error) {
-    console.error('Payment initiation error:', error.response?.status, error.response?.data || error.message);
+    console.error('Payment error:', error.response?.status, error.response?.data || error.message);
 
     if (error.response?.status === 401) {
-      return res.status(502).json({ error: 'Uthibitisho wa malipo umeshindwa. Angalia API keys.' });
-    }
-    if (error.response?.status === 422) {
-      return res.status(400).json({ error: error.response.data?.message || 'Taarifa za malipo si sahihi' });
+      return res.status(502).json({ error: 'API key si sahihi. Wasiliana na msaada.' });
     }
 
-    console.log('Falling back to demo payment mode');
+    console.log('Fallback to demo mode');
     return processDemoPayment(order, res);
   }
 });
 
-async function initiateBriq(order, res) {
-  const callbackUrl = `${process.env.FRONTEND_URL}/order-confirmation/${order.id}`;
-
-  const endpoints = [
-    `${BRIQ_URL}/v1/checkout/sessions`,
-    `${BRIQ_URL}/v1/payments`,
-    `${BRIQ_URL}/checkout/sessions`,
-    `${BRIQ_URL}/payments`,
-  ];
-
-  const payload = {
-    amount: order.total,
-    currency: CURRENCY,
-    description: `${APP_NAME} Order ${order.id}`,
-    reference: order.id,
-    customer: {
-      name: order.customer.name,
-      email: order.customer.email,
-      phone: order.customer.phone
-    },
-    items: order.items.map(item => ({
-      name: item.name,
-      quantity: item.quantity,
-      unit_price: item.price,
-      total: item.price * item.quantity
-    })),
-    metadata: {
-      order_id: order.id,
-      source: APP_NAME.toLowerCase()
-    },
-    success_url: callbackUrl,
-    cancel_url: `${process.env.FRONTEND_URL}/checkout`,
-    callback_url: callbackUrl,
-    webhook_url: getWebhookUrl(),
-    return_url: callbackUrl
-  };
-
-  let lastError = null;
-  for (const endpoint of endpoints) {
-    try {
-      console.log(`Trying Briq endpoint: ${endpoint}`);
-      const response = await axios.post(endpoint, payload, {
-        headers: briqHeaders(),
-        timeout: 15000
-      });
-
-      const data = response.data.data || response.data;
-      order.paymentId = data.id || data.reference || data.session_id;
-      order.paymentProvider = 'briq';
-      order.updatedAt = new Date().toISOString();
-
-      const paymentUrl = data.payment_url || data.paymentUrl || data.checkout_url
-        || data.url || data.redirect_url || data.session_url;
-
-      if (paymentUrl) {
-        return res.json({
-          provider: 'briq',
-          paymentId: order.paymentId,
-          paymentUrl,
-          status: data.status || 'pending',
-          order: { id: order.id, total: order.total }
-        });
-      }
-
-      if (data.status === 'completed' || data.status === 'paid' || data.status === 'succeeded') {
-        order.status = 'confirmed';
-        order.statusHistory.push({
-          status: 'confirmed',
-          timestamp: new Date().toISOString(),
-          note: 'Payment confirmed via Briq'
-        });
-        order.updatedAt = new Date().toISOString();
-
-        await sendOrderWhatsApp(order);
-
-        return res.json({
-          provider: 'briq',
-          paymentId: order.paymentId,
-          paymentUrl: null,
-          status: 'confirmed',
-          order: { id: order.id, total: order.total, status: 'confirmed' }
-        });
-      }
-
-      return res.json({
-        provider: 'briq',
-        paymentId: order.paymentId,
-        paymentUrl: null,
-        status: data.status || 'pending',
-        order: { id: order.id, total: order.total }
-      });
-    } catch (err) {
-      lastError = err;
-      console.log(`Briq endpoint ${endpoint} failed:`, err.response?.status, err.response?.data?.message || err.message);
-    }
-  }
-
-  throw lastError;
-}
-
-async function initiateSnippeMobile(order, phone, res) {
-  const cleanPhone = phone.replace(/[^0-9+]/g, '');
-
-  const endpoints = [
-    `${SNIPPE_URL}/v1/payments`,
-    `${SNIPPE_URL}/payments`,
-  ];
+// ── Snippe Mobile Money (USSD push) ───────────────────────────────
+async function initiateMobileMoney(order, phone, res) {
+  const formattedPhone = formatPhone(phone);
 
   const payload = {
     amount: order.total,
     currency: CURRENCY,
     type: 'mobile',
-    phone_number: cleanPhone,
+    phone_number: formattedPhone,
     customer: {
       firstname: order.customer.name.split(' ')[0],
       lastname: order.customer.name.split(' ').slice(1).join(' ') || order.customer.name,
@@ -240,19 +133,24 @@ async function initiateSnippeMobile(order, phone, res) {
     webhook_url: getWebhookUrl()
   };
 
+  console.log(`[Payment] Mobile money for ${order.id}: ${formattedPhone}, amount: ${order.total} ${CURRENCY}`);
+
   let lastError = null;
-  for (const endpoint of endpoints) {
+  for (const endpoint of SNIPPE_ENDPOINTS) {
     try {
-      console.log(`Trying Snippe endpoint: ${endpoint}`);
+      console.log(`[Payment] Trying: ${endpoint}`);
       const response = await axios.post(endpoint, payload, {
         headers: snippeHeaders(),
-        timeout: 15000
+        timeout: 20000
       });
 
       const data = response.data.data || response.data;
+      console.log(`[Payment] Snippe response:`, JSON.stringify(data).substring(0, 500));
+
       order.paymentId = data.reference || data.id;
       order.paymentProvider = 'snippe';
       order.paymentType = 'mobile';
+      order.paymentPhone = formattedPhone;
       order.updatedAt = new Date().toISOString();
 
       return res.json({
@@ -260,79 +158,74 @@ async function initiateSnippeMobile(order, phone, res) {
         type: 'mobile',
         paymentId: order.paymentId,
         status: data.status || 'pending',
-        message: 'Omba wa USSD umetumwa kwenye simu yako. Tafadhali thibitisha malipo.',
-        order: { id: order.id, total: order.total }
+        phone: formattedPhone,
+        message: `USSD imetumwa kwa ${formattedPhone}. Thibitisha malipo kwenye simu yako.`,
+        order: { id: order.id, total: order.total, status: 'pending' }
       });
     } catch (err) {
       lastError = err;
-      console.log(`Snippe endpoint ${endpoint} failed:`, err.response?.status);
+      console.error(`[Payment] ${endpoint} failed:`, err.response?.status, err.response?.data || err.message);
     }
   }
 
   throw lastError;
 }
 
-async function initiateSnippeCard(order, res) {
-  const endpoints = [
-    `${SNIPPE_URL}/v1/payments`,
-    `${SNIPPE_URL}/payments`,
-  ];
+// ── Briq Card Payment ──────────────────────────────────────────────
+async function initiateBriqCard(order, res) {
+  const callbackUrl = `${process.env.FRONTEND_URL}/order-confirmation/${order.id}`;
 
   const payload = {
     amount: order.total,
     currency: CURRENCY,
-    type: 'card',
-    phone_number: order.customer.phone.replace(/[^0-9+]/g, ''),
+    description: `${APP_NAME} Order ${order.id}`,
+    reference: order.id,
     customer: {
-      firstname: order.customer.name.split(' ')[0],
-      lastname: order.customer.name.split(' ').slice(1).join(' ') || order.customer.name,
+      name: order.customer.name,
       email: order.customer.email,
-      address: order.customer.address?.street || '',
-      city: order.customer.address?.city || '',
-      state: order.customer.address?.state || '',
-      postcode: order.customer.address?.zip || '',
-      country: order.customer.address?.country || 'TZ'
+      phone: order.customer.phone
     },
-    metadata: {
-      order_id: order.id,
-      source: APP_NAME.toLowerCase()
-    },
-    callback_url: `${process.env.FRONTEND_URL}/order-confirmation/${order.id}`,
-    webhook_url: getWebhookUrl()
+    metadata: { order_id: order.id },
+    success_url: callbackUrl,
+    cancel_url: `${process.env.FRONTEND_URL}/checkout`,
+    callback_url: callbackUrl,
+    webhook_url: getWebhookUrl(),
+    return_url: callbackUrl
   };
+
+  const endpoints = [
+    `${BRIQ_URL}/v1/checkout/sessions`,
+    `${BRIQ_URL}/v1/payments`,
+    `${BRIQ_URL}/payments`,
+  ];
 
   let lastError = null;
   for (const endpoint of endpoints) {
     try {
-      console.log(`Trying Snippe card endpoint: ${endpoint}`);
-      const response = await axios.post(endpoint, payload, {
-        headers: snippeHeaders(),
-        timeout: 15000
-      });
-
+      const response = await axios.post(endpoint, payload, { headers: briqHeaders(), timeout: 15000 });
       const data = response.data.data || response.data;
-      order.paymentId = data.reference || data.id;
-      order.paymentProvider = 'snippe';
-      order.paymentType = 'card';
+
+      order.paymentId = data.id || data.reference;
+      order.paymentProvider = 'briq';
       order.updatedAt = new Date().toISOString();
 
+      const paymentUrl = data.payment_url || data.paymentUrl || data.checkout_url || data.url;
       return res.json({
-        provider: 'snippe',
+        provider: 'briq',
         type: 'card',
         paymentId: order.paymentId,
-        paymentUrl: data.payment_url || data.paymentUrl,
+        paymentUrl,
         status: data.status || 'pending',
         order: { id: order.id, total: order.total }
       });
     } catch (err) {
       lastError = err;
-      console.log(`Snippe card endpoint ${endpoint} failed:`, err.response?.status);
     }
   }
-
   throw lastError;
 }
 
+// ── Demo Payment ───────────────────────────────────────────────────
 function processDemoPayment(order, res) {
   order.status = 'confirmed';
   order.paymentId = `DEMO-${Date.now()}`;
@@ -340,135 +233,133 @@ function processDemoPayment(order, res) {
   order.statusHistory.push({
     status: 'confirmed',
     timestamp: new Date().toISOString(),
-    note: 'Malipo yamethibitishwa (hali ya majaribio)'
+    note: 'Malipo yamethibitishwa (demo)'
   });
   order.updatedAt = new Date().toISOString();
 
-  sendOrderWhatsApp(order);
+  sendWhatsAppNotification(order);
 
   res.json({
     provider: 'demo',
     paymentId: order.paymentId,
-    paymentUrl: null,
     status: 'confirmed',
-    message: 'Malipo yamefanikiwa (demo mode).',
-    order: { id: order.id, total: order.total, status: order.status }
+    message: 'Demo mode: malipo yamethibitishwa.',
+    order: { id: order.id, total: order.total, status: 'confirmed' }
   });
 }
 
-async function sendOrderWhatsApp(order) {
-  try {
-    await axios.post(`http://localhost:${process.env.PORT || 5000}/api/v1/whatsapp/send-order-notification`, {
-      orderId: order.id
-    }, { timeout: 5000 });
-    console.log(`WhatsApp notification sent for order ${order.id}`);
-  } catch (err) {
-    console.log(`WhatsApp notification skipped for ${order.id}:`, err.message);
-  }
-}
-
+// ── Check payment status ───────────────────────────────────────────
 router.get('/status/:paymentId', async (req, res) => {
   const { paymentId } = req.params;
   const order = orders.find(o => o.paymentId === paymentId);
-
   if (!order) return res.status(404).json({ error: 'Payment not found' });
 
-  try {
-    if (order.paymentProvider === 'briq' && BRIQ_KEY && BRIQ_URL) {
-      const urls = [`${BRIQ_URL}/v1/payments/${paymentId}`, `${BRIQ_URL}/payments/${paymentId}`];
-      for (const url of urls) {
-        try {
-          const response = await axios.get(url, { headers: briqHeaders(), timeout: 10000 });
-          const data = response.data.data || response.data;
-          return res.json({ paymentId, status: data.status, provider: 'briq', orderId: order.id });
-        } catch { /* try next */ }
-      }
-    }
+  if (order.paymentProvider === 'snippe' && SNIPPE_KEY) {
+    const statusUrls = SNIPPE_ENDPOINTS.map(ep => ep.replace('/payments', `/payments/${paymentId}`));
+    for (const url of statusUrls) {
+      try {
+        const response = await axios.get(url, { headers: snippeHeaders(), timeout: 10000 });
+        const data = response.data.data || response.data;
+        const status = data.status;
 
-    if (order.paymentProvider === 'snippe' && SNIPPE_KEY && SNIPPE_URL) {
-      const urls = [`${SNIPPE_URL}/v1/payments/${paymentId}`, `${SNIPPE_URL}/payments/${paymentId}`];
-      for (const url of urls) {
-        try {
-          const response = await axios.get(url, { headers: snippeHeaders(), timeout: 10000 });
-          const data = response.data.data || response.data;
-          return res.json({ paymentId, status: data.status, provider: 'snippe', orderId: order.id });
-        } catch { /* try next */ }
-      }
+        if ((status === 'completed' || status === 'succeeded') && order.status !== 'confirmed') {
+          order.status = 'confirmed';
+          order.statusHistory.push({
+            status: 'confirmed',
+            timestamp: new Date().toISOString(),
+            note: `Malipo yamekamilika (${data.channel?.provider || 'mobile money'})`
+          });
+          order.updatedAt = new Date().toISOString();
+          sendWhatsAppNotification(order);
+        }
+
+        if ((status === 'failed' || status === 'declined') && order.status === 'pending') {
+          order.status = 'cancelled';
+          order.statusHistory.push({
+            status: 'cancelled', timestamp: new Date().toISOString(), note: 'Malipo yameshindwa'
+          });
+          order.updatedAt = new Date().toISOString();
+        }
+
+        return res.json({
+          paymentId, status: order.status, provider: 'snippe',
+          orderId: order.id, providerStatus: status
+        });
+      } catch { /* try next */ }
     }
-  } catch (error) {
-    console.error('Payment status check failed:', error.message);
   }
 
   res.json({ paymentId, status: order.status, provider: order.paymentProvider || 'demo', orderId: order.id });
 });
 
+// ── Webhook (Snippe / Briq) ───────────────────────────────────────
 router.post('/webhook', async (req, res) => {
-  console.log('Payment webhook received:', JSON.stringify(req.body, null, 2));
+  console.log('[Webhook] Received:', JSON.stringify(req.body, null, 2));
+  res.status(200).json({ received: true });
 
   const body = req.body;
 
-  // Snippe webhook format
-  if (body.type && body.data) {
-    const event = body.type;
-    const paymentData = body.data;
-    const reference = paymentData.reference;
-    const metadata = paymentData.metadata || {};
+  try {
+    // Snippe format
+    if (body.type && body.data) {
+      const paymentData = body.data;
+      const reference = paymentData.reference;
+      const metadata = paymentData.metadata || {};
+      const order = orders.find(o => o.paymentId === reference || o.id === metadata.order_id);
 
-    const order = orders.find(o =>
-      o.paymentId === reference || o.id === metadata.order_id
-    );
-
-    if (order) {
-      if (event === 'payment.completed') {
-        order.status = 'confirmed';
-        order.statusHistory.push({
-          status: 'confirmed',
-          timestamp: new Date().toISOString(),
-          note: `Malipo yamekamilika kupitia ${paymentData.channel?.type || 'unknown'} (${paymentData.channel?.provider || 'unknown'})`
-        });
-        await sendOrderWhatsApp(order);
-      } else if (event === 'payment.failed') {
-        order.status = 'cancelled';
-        order.statusHistory.push({
-          status: 'cancelled',
-          timestamp: new Date().toISOString(),
-          note: 'Malipo yameshindwa'
-        });
+      if (order) {
+        if (body.type === 'payment.completed') {
+          order.status = 'confirmed';
+          order.statusHistory.push({
+            status: 'confirmed',
+            timestamp: new Date().toISOString(),
+            note: `Malipo yamekamilika: ${paymentData.channel?.provider || 'mobile money'} - ${paymentData.amount?.value || order.total} ${CURRENCY}`
+          });
+          order.updatedAt = new Date().toISOString();
+          console.log(`[Webhook] Order ${order.id} CONFIRMED`);
+          await sendWhatsAppNotification(order);
+        } else if (body.type === 'payment.failed') {
+          order.status = 'cancelled';
+          order.statusHistory.push({
+            status: 'cancelled', timestamp: new Date().toISOString(), note: 'Malipo yameshindwa'
+          });
+          order.updatedAt = new Date().toISOString();
+          console.log(`[Webhook] Order ${order.id} FAILED`);
+        }
       }
+      return;
+    }
+
+    // Generic format
+    const orderId = body.orderId || body.order_id || body.reference || body.metadata?.order_id;
+    const status = body.status || body.payment_status;
+    const pId = body.paymentId || body.payment_id || body.id;
+    const order = orders.find(o => o.id === orderId || o.paymentId === pId);
+    if (order) {
+      const map = { succeeded: 'confirmed', completed: 'confirmed', paid: 'confirmed', failed: 'cancelled' };
+      const newStatus = map[status] || status;
+      order.status = newStatus;
+      order.statusHistory.push({ status: newStatus, timestamp: new Date().toISOString(), note: `Webhook: ${status}` });
       order.updatedAt = new Date().toISOString();
-      console.log(`Order ${order.id} updated to ${order.status}`);
+      if (newStatus === 'confirmed') await sendWhatsAppNotification(order);
     }
-
-    return res.json({ received: true, event });
+  } catch (err) {
+    console.error('[Webhook] Processing error:', err.message);
   }
-
-  // Briq / generic webhook format
-  const orderId = body.orderId || body.order_id || body.reference || body.metadata?.order_id;
-  const status = body.status || body.payment_status;
-  const paymentId = body.paymentId || body.payment_id || body.id;
-
-  const order = orders.find(o => o.id === orderId || o.paymentId === paymentId);
-  if (order) {
-    const statusMap = {
-      succeeded: 'confirmed', completed: 'confirmed', paid: 'confirmed',
-      failed: 'cancelled', declined: 'cancelled', expired: 'cancelled',
-      pending: 'pending'
-    };
-    const newStatus = statusMap[status] || status;
-    order.status = newStatus;
-    order.statusHistory.push({
-      status: newStatus,
-      timestamp: new Date().toISOString(),
-      note: `Malipo ${status} kupitia webhook`
-    });
-    order.updatedAt = new Date().toISOString();
-
-    if (newStatus === 'confirmed') {
-      await sendOrderWhatsApp(order);
-    }
-  }
-
-  res.json({ received: true });
 });
+
+// ── WhatsApp notification after payment ────────────────────────────
+async function sendWhatsAppNotification(order) {
+  try {
+    await axios.post(
+      `http://localhost:${process.env.PORT || 5000}/api/v1/whatsapp/send-order-notification`,
+      { orderId: order.id },
+      { timeout: 10000 }
+    );
+    console.log(`[WhatsApp] Notification sent for ${order.id}`);
+  } catch (err) {
+    console.log(`[WhatsApp] Notification failed for ${order.id}:`, err.message);
+  }
+}
 
 module.exports = router;
