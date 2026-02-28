@@ -74,13 +74,13 @@ export default function Checkout() {
 
       if (payment.status === 'confirmed' || payment.provider === 'demo') {
         await clearCart();
-        toast.success('Order placed successfully!', { duration: 5000 });
+        toast.success('Oda imewekwa! Utapata taarifa kupitia WhatsApp.', { duration: 5000, icon: '✅' });
         navigate(`/order-confirmation/${order.id}`);
         return;
       }
 
       if (payment.type === 'mobile') {
-        toast.success(payment.message || 'Check your phone for the payment prompt', { duration: 8000, icon: '📱' });
+        toast.success(payment.message || 'Angalia simu yako kuthibitisha malipo', { duration: 8000, icon: '📱' });
         await clearCart();
         navigate(`/order-confirmation/${order.id}`);
         return;
