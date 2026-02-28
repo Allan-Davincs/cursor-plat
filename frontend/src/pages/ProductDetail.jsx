@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { ShoppingCart, Heart, Star, Truck, Shield, RotateCcw, ChevronRight, Minus, Plus, Check } from 'lucide-react';
 import { productApi } from '../lib/api';
+import { formatPrice } from '../lib/currency';
 import { useCart } from '../context/CartContext';
 import ProductCard from '../components/ProductCard';
 import WhatsAppButton from '../components/WhatsAppButton';
@@ -106,12 +107,12 @@ export default function ProductDetail() {
             </div>
 
             <div className="flex items-baseline gap-3 mb-6">
-              <span className="text-4xl font-bold">${product.price}</span>
+              <span className="text-4xl font-bold">{formatPrice(product.price)}</span>
               {product.originalPrice > product.price && (
                 <>
-                  <span className="text-xl text-gray-400 line-through">${product.originalPrice}</span>
+                  <span className="text-xl text-gray-400 line-through">{formatPrice(product.originalPrice)}</span>
                   <span className="badge bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 px-3 py-1">
-                    Save ${(product.originalPrice - product.price).toFixed(2)}
+                    Save {formatPrice(product.originalPrice - product.price)}
                   </span>
                 </>
               )}
@@ -171,7 +172,7 @@ export default function ProductDetail() {
                 </span>
               </p>
               <div className="space-y-2 text-sm text-gray-500 dark:text-gray-400">
-                <p className="flex items-center gap-2"><Truck className="w-4 h-4" /> Free shipping on orders over $100</p>
+                <p className="flex items-center gap-2"><Truck className="w-4 h-4" /> Free shipping on orders over 250,000 TZS</p>
                 <p className="flex items-center gap-2"><Shield className="w-4 h-4" /> 2-year warranty included</p>
                 <p className="flex items-center gap-2"><RotateCcw className="w-4 h-4" /> 30-day return policy</p>
               </div>

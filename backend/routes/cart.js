@@ -11,21 +11,27 @@ function getCart(sessionId) {
   return carts[sessionId];
 }
 
+const FREE_SHIPPING_THRESHOLD = 250000;
+const SHIPPING_FEE = 5000;
+const TAX_RATE = 0.18;
+
 function calculateTotals(cart) {
   const subtotal = cart.items.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const savings = cart.items.reduce((sum, item) => sum + (item.originalPrice - item.price) * item.quantity, 0);
-  const shipping = subtotal > 100 ? 0 : 9.99;
-  const tax = subtotal * 0.08;
+  const shipping = subtotal >= FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_FEE;
+  const tax = Math.round(subtotal * TAX_RATE);
   const total = subtotal + shipping + tax;
   return {
     items: cart.items,
-    subtotal: Math.round(subtotal * 100) / 100,
-    savings: Math.round(savings * 100) / 100,
-    shipping: Math.round(shipping * 100) / 100,
-    tax: Math.round(tax * 100) / 100,
-    total: Math.round(total * 100) / 100,
+    subtotal,
+    savings,
+    shipping,
+    tax,
+    total,
     itemCount: cart.items.reduce((sum, item) => sum + item.quantity, 0),
-    freeShippingEligible: subtotal > 100
+    freeShippingEligible: subtotal >= FREE_SHIPPING_THRESHOLD,
+    freeShippingThreshold: FREE_SHIPPING_THRESHOLD,
+    currency: process.env.CURRENCY || 'TZS'
   };
 }
 

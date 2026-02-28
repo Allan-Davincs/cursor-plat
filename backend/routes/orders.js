@@ -15,9 +15,13 @@ router.post('/', async (req, res) => {
     return res.status(400).json({ error: 'Cart is empty' });
   }
 
+  const FREE_SHIPPING_THRESHOLD = 250000;
+  const SHIPPING_FEE = 5000;
+  const TAX_RATE = 0.18;
+
   const subtotal = cart.items.reduce((sum, i) => sum + i.price * i.quantity, 0);
-  const shipping = subtotal > 100 ? 0 : 9.99;
-  const tax = subtotal * 0.08;
+  const shipping = subtotal >= FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_FEE;
+  const tax = Math.round(subtotal * TAX_RATE);
   const total = subtotal + shipping + tax;
 
   for (const item of cart.items) {
@@ -29,10 +33,11 @@ router.post('/', async (req, res) => {
     id: generateOrderId(),
     customer,
     items: [...cart.items],
-    subtotal: Math.round(subtotal * 100) / 100,
-    shipping: Math.round(shipping * 100) / 100,
-    tax: Math.round(tax * 100) / 100,
-    total: Math.round(total * 100) / 100,
+    subtotal,
+    shipping,
+    tax,
+    total,
+    currency: process.env.CURRENCY || 'TZS',
     paymentMethod,
     paymentProvider: null,
     paymentId: null,

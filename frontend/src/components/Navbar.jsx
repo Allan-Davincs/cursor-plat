@@ -58,8 +58,8 @@ export default function Navbar() {
                 <Package className="w-5 h-5 text-white" />
               </div>
               <span className="text-xl font-bold tracking-tight hidden sm:block">
-                <span className="text-gradient">Luxe</span>
-                <span className="dark:text-white">Store</span>
+                <span className="text-gradient">Shop</span>
+                <span className="dark:text-white">Hub</span>
               </span>
             </Link>
 

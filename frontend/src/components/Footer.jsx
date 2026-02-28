@@ -12,7 +12,7 @@ export default function Footer() {
                 <Package className="w-5 h-5 text-white" />
               </div>
               <span className="text-xl font-bold">
-                <span className="text-gradient">Luxe</span>Store
+                <span className="text-gradient">Shop</span>Hub
               </span>
             </Link>
             <p className="text-sm text-gray-500 dark:text-gray-400 leading-relaxed mb-6">
@@ -61,10 +61,10 @@ export default function Footer() {
             <h4 className="font-semibold mb-4">Contact</h4>
             <ul className="space-y-3 text-sm">
               <li className="flex items-center gap-2 text-gray-500 dark:text-gray-400">
-                <Mail className="w-4 h-4" /> hello@luxestore.com
+                <Mail className="w-4 h-4" /> hello@shophub.co.tz
               </li>
               <li className="flex items-center gap-2 text-gray-500 dark:text-gray-400">
-                <Phone className="w-4 h-4" /> +1 (234) 567-890
+                <Phone className="w-4 h-4" /> +255 6XX XXX XXX
               </li>
               <li className="flex items-start gap-2 text-gray-500 dark:text-gray-400">
                 <MapPin className="w-4 h-4 mt-0.5" /> 123 Commerce St, Tech City
@@ -76,7 +76,7 @@ export default function Footer() {
 
       <div className="border-t border-gray-100 dark:border-gray-800">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-gray-500 dark:text-gray-400">
-          <p>&copy; {new Date().getFullYear()} LuxeStore. All rights reserved.</p>
+          <p>&copy; {new Date().getFullYear()} ShopHub. All rights reserved.</p>
           <div className="flex items-center gap-6">
             <a href="#" className="hover:text-primary-600 transition-colors">Privacy</a>
             <a href="#" className="hover:text-primary-600 transition-colors">Terms</a>

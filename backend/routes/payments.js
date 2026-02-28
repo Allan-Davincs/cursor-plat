@@ -5,10 +5,12 @@ const crypto = require('crypto');
 const { v4: uuidv4 } = require('uuid');
 const { orders } = require('../data/store');
 
-const BRIQ_BASE = process.env.BRIQ_BASE_URL;
+const BRIQ_URL = process.env.BRIQ_API_URL;
 const BRIQ_KEY = process.env.BRIQ_API_KEY;
-const SNIPPE_BASE = process.env.SNIPPE_BASE_URL;
+const SNIPPE_URL = process.env.SNIPPE_API_URL;
 const SNIPPE_KEY = process.env.SNIPPE_API_KEY;
+const CURRENCY = process.env.CURRENCY || 'TZS';
+const APP_NAME = process.env.APP_NAME || 'ShopHub';
 
 function briqHeaders() {
   return {
@@ -29,7 +31,7 @@ function snippeHeaders() {
 router.get('/methods', (req, res) => {
   const methods = [];
 
-  if (BRIQ_KEY && BRIQ_BASE) {
+  if (BRIQ_KEY && BRIQ_URL) {
     methods.push({
       id: 'briq',
       name: 'Briq Payment',
@@ -39,7 +41,7 @@ router.get('/methods', (req, res) => {
     });
   }
 
-  if (SNIPPE_KEY && SNIPPE_BASE) {
+  if (SNIPPE_KEY && SNIPPE_URL) {
     methods.push(
       {
         id: 'snippe-mobile',
@@ -78,16 +80,16 @@ router.post('/initiate', async (req, res) => {
   if (!order) return res.status(404).json({ error: 'Order not found' });
 
   try {
-    if (method === 'snippe-mobile' && SNIPPE_KEY && SNIPPE_BASE) {
+    if (method === 'snippe-mobile' && SNIPPE_KEY && SNIPPE_URL) {
       return await initiateSnippeMobile(order, phoneNumber || order.customer.phone, res);
     }
-    if (method === 'snippe-card' && SNIPPE_KEY && SNIPPE_BASE) {
+    if (method === 'snippe-card' && SNIPPE_KEY && SNIPPE_URL) {
       return await initiateSnippeCard(order, res);
     }
-    if ((method === 'briq' || method === 'auto') && BRIQ_KEY && BRIQ_BASE) {
+    if ((method === 'briq' || method === 'auto') && BRIQ_KEY && BRIQ_URL) {
       return await initiateBriq(order, res);
     }
-    if (method === 'auto' && SNIPPE_KEY && SNIPPE_BASE) {
+    if (method === 'auto' && SNIPPE_KEY && SNIPPE_URL) {
       return await initiateSnippeCard(order, res);
     }
 
@@ -108,10 +110,12 @@ router.post('/initiate', async (req, res) => {
 });
 
 async function initiateBriq(order, res) {
+  const webhookUrl = process.env.PAYMENT_WEBHOOK_URL || `http://localhost:${process.env.PORT || 5000}/api/v1/payments/webhook`;
+
   const payload = {
     amount: Math.round(order.total * 100),
-    currency: 'USD',
-    description: `LuxeStore Order ${order.id}`,
+    currency: CURRENCY,
+    description: `${APP_NAME} Order ${order.id}`,
     customer: {
       name: order.customer.name,
       email: order.customer.email,
@@ -119,13 +123,13 @@ async function initiateBriq(order, res) {
     },
     metadata: {
       order_id: order.id,
-      source: 'luxestore'
+      source: APP_NAME.toLowerCase()
     },
     callback_url: `${process.env.FRONTEND_URL}/order-confirmation/${order.id}`,
-    webhook_url: process.env.PAYMENT_WEBHOOK_URL
+    webhook_url: webhookUrl
   };
 
-  const response = await axios.post(`${BRIQ_BASE}/payments`, payload, {
+  const response = await axios.post(`${BRIQ_URL}/payments`, payload, {
     headers: briqHeaders(),
     timeout: 15000
   });
@@ -146,10 +150,11 @@ async function initiateBriq(order, res) {
 
 async function initiateSnippeMobile(order, phone, res) {
   const cleanPhone = phone.replace(/[^0-9+]/g, '');
+  const webhookUrl = process.env.PAYMENT_WEBHOOK_URL || `http://localhost:${process.env.PORT || 5000}/api/v1/payments/webhook`;
 
   const payload = {
     amount: Math.round(order.total * 100),
-    currency: 'TZS',
+    currency: CURRENCY,
     type: 'mobile',
     phone_number: cleanPhone,
     customer: {
@@ -159,12 +164,12 @@ async function initiateSnippeMobile(order, phone, res) {
     },
     metadata: {
       order_id: order.id,
-      source: 'luxestore'
+      source: APP_NAME.toLowerCase()
     },
-    webhook_url: process.env.PAYMENT_WEBHOOK_URL
+    webhook_url: webhookUrl
   };
 
-  const response = await axios.post(`${SNIPPE_BASE}/payments`, payload, {
+  const response = await axios.post(`${SNIPPE_URL}/payments`, payload, {
     headers: snippeHeaders(),
     timeout: 15000
   });
@@ -186,9 +191,11 @@ async function initiateSnippeMobile(order, phone, res) {
 }
 
 async function initiateSnippeCard(order, res) {
+  const webhookUrl = process.env.PAYMENT_WEBHOOK_URL || `http://localhost:${process.env.PORT || 5000}/api/v1/payments/webhook`;
+
   const payload = {
     amount: Math.round(order.total * 100),
-    currency: 'TZS',
+    currency: CURRENCY,
     type: 'card',
     phone_number: order.customer.phone.replace(/[^0-9+]/g, ''),
     customer: {
@@ -203,13 +210,13 @@ async function initiateSnippeCard(order, res) {
     },
     metadata: {
       order_id: order.id,
-      source: 'luxestore'
+      source: APP_NAME.toLowerCase()
     },
     callback_url: `${process.env.FRONTEND_URL}/order-confirmation/${order.id}`,
-    webhook_url: process.env.PAYMENT_WEBHOOK_URL
+    webhook_url: webhookUrl
   };
 
-  const response = await axios.post(`${SNIPPE_BASE}/payments`, payload, {
+  const response = await axios.post(`${SNIPPE_URL}/payments`, payload, {
     headers: snippeHeaders(),
     timeout: 15000
   });
@@ -258,16 +265,16 @@ router.get('/status/:paymentId', async (req, res) => {
   if (!order) return res.status(404).json({ error: 'Payment not found' });
 
   try {
-    if (order.paymentProvider === 'briq' && BRIQ_KEY && BRIQ_BASE) {
-      const response = await axios.get(`${BRIQ_BASE}/payments/${paymentId}`, {
+    if (order.paymentProvider === 'briq' && BRIQ_KEY && BRIQ_URL) {
+      const response = await axios.get(`${BRIQ_URL}/payments/${paymentId}`, {
         headers: briqHeaders(), timeout: 10000
       });
       const data = response.data.data || response.data;
       return res.json({ paymentId, status: data.status, provider: 'briq', orderId: order.id });
     }
 
-    if (order.paymentProvider === 'snippe' && SNIPPE_KEY && SNIPPE_BASE) {
-      const response = await axios.get(`${SNIPPE_BASE}/payments/${paymentId}`, {
+    if (order.paymentProvider === 'snippe' && SNIPPE_KEY && SNIPPE_URL) {
+      const response = await axios.get(`${SNIPPE_URL}/payments/${paymentId}`, {
         headers: snippeHeaders(), timeout: 10000
       });
       const data = response.data.data || response.data;

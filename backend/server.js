@@ -14,6 +14,7 @@ const whatsappRoutes = require('./routes/whatsapp');
 const adminRoutes = require('./routes/admin');
 
 const app = express();
+const APP_NAME = process.env.APP_NAME || 'ShopHub';
 
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -36,11 +37,13 @@ app.use('/api/v1/admin', adminRoutes);
 app.get('/api/v1/health', (req, res) => {
   res.json({
     status: 'ok',
+    app: APP_NAME,
     timestamp: new Date().toISOString(),
     services: {
       briq: !!process.env.BRIQ_API_KEY,
       snippe: !!process.env.SNIPPE_API_KEY,
-      whatsapp: process.env.WHATSAPP_PHONE || 'not configured'
+      ghala: !!process.env.GHALA_WEBHOOK_URL,
+      whatsapp: process.env.WHATSAPP_NUMBER || 'not configured'
     }
   });
 });
@@ -52,10 +55,12 @@ app.use((err, req, res, _next) => {
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-  console.log(`Briq API: ${process.env.BRIQ_BASE_URL || 'not configured'}`);
-  console.log(`Snippe API: ${process.env.SNIPPE_BASE_URL || 'not configured'}`);
-  console.log(`WhatsApp: ${process.env.WHATSAPP_PHONE || 'not configured'}`);
+  console.log(`${APP_NAME} server running on port ${PORT}`);
+  console.log(`Briq API: ${process.env.BRIQ_API_URL || 'not configured'}`);
+  console.log(`Snippe API: ${process.env.SNIPPE_API_URL || 'not configured'}`);
+  console.log(`Ghala WhatsApp: ${process.env.GHALA_WEBHOOK_URL ? 'configured' : 'not configured'}`);
+  console.log(`WhatsApp: ${process.env.WHATSAPP_NUMBER || 'not configured'}`);
+  console.log(`Currency: ${process.env.CURRENCY || 'TZS'}`);
 });
 
 module.exports = app;
