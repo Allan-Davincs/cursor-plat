@@ -5,16 +5,12 @@ const { v4: uuidv4 } = require('uuid');
 const { orders } = require('../data/store');
 
 const SNIPPE_KEY = process.env.SNIPPE_API_KEY;
-const SNIPPE_URL = process.env.SNIPPE_API_URL;
 const BRIQ_URL = process.env.BRIQ_API_URL;
 const BRIQ_KEY = process.env.BRIQ_API_KEY;
 const CURRENCY = process.env.CURRENCY || 'TZS';
 const APP_NAME = process.env.APP_NAME || 'ShopHub';
 
-const SNIPPE_ENDPOINTS = [
-  SNIPPE_URL ? `${SNIPPE_URL}/v1/payments` : null,
-  'https://api.snippe.sh/v1/payments',
-].filter(Boolean);
+const SNIPPE_API = 'https://api.snippe.sh'; // pragma: allowlist secret
 
 function snippeHeaders() {
   return {
@@ -34,8 +30,9 @@ function briqHeaders() {
 }
 
 function getWebhookUrl() {
-  return process.env.PAYMENT_WEBHOOK_URL
-    || `http://localhost:${process.env.PORT || 5000}/api/v1/payments/webhook`;
+  const url = process.env.PAYMENT_WEBHOOK_URL;
+  if (url && url.startsWith('https://')) return url;
+  return undefined;
 }
 
 function formatPhone(phone) {
@@ -101,13 +98,13 @@ router.post('/initiate', async (req, res) => {
     }
     return processDemoPayment(order, res);
   } catch (error) {
-    console.error('Payment error:', error.response?.status, error.response?.data || error.message);
+    console.error('[Payment] Error:', error.response?.status, error.response?.data || error.message);
 
     if (error.response?.status === 401) {
       return res.status(502).json({ error: 'API key si sahihi. Wasiliana na msaada.' });
     }
 
-    console.log('Fallback to demo mode');
+    console.log('[Payment] Fallback to demo mode');
     return processDemoPayment(order, res);
   }
 });
@@ -115,60 +112,56 @@ router.post('/initiate', async (req, res) => {
 // ── Snippe Mobile Money (USSD push) ───────────────────────────────
 async function initiateMobileMoney(order, phone, res) {
   const formattedPhone = formatPhone(phone);
+  const webhookUrl = getWebhookUrl();
 
   const payload = {
-    amount: order.total,
-    currency: CURRENCY,
     type: 'mobile',
+    details: {
+      amount: order.total,
+      currency: CURRENCY
+    },
     phone_number: formattedPhone,
     customer: {
       firstname: order.customer.name.split(' ')[0],
       lastname: order.customer.name.split(' ').slice(1).join(' ') || order.customer.name,
-      email: order.customer.email
+      email: order.customer.email || undefined
     },
     metadata: {
       order_id: order.id,
       source: APP_NAME.toLowerCase()
-    },
-    webhook_url: getWebhookUrl()
+    }
   };
 
-  console.log(`[Payment] Mobile money for ${order.id}: ${formattedPhone}, amount: ${order.total} ${CURRENCY}`);
-
-  let lastError = null;
-  for (const endpoint of SNIPPE_ENDPOINTS) {
-    try {
-      console.log(`[Payment] Trying: ${endpoint}`);
-      const response = await axios.post(endpoint, payload, {
-        headers: snippeHeaders(),
-        timeout: 20000
-      });
-
-      const data = response.data.data || response.data;
-      console.log(`[Payment] Snippe response:`, JSON.stringify(data).substring(0, 500));
-
-      order.paymentId = data.reference || data.id;
-      order.paymentProvider = 'snippe';
-      order.paymentType = 'mobile';
-      order.paymentPhone = formattedPhone;
-      order.updatedAt = new Date().toISOString();
-
-      return res.json({
-        provider: 'snippe',
-        type: 'mobile',
-        paymentId: order.paymentId,
-        status: data.status || 'pending',
-        phone: formattedPhone,
-        message: `USSD imetumwa kwa ${formattedPhone}. Thibitisha malipo kwenye simu yako.`,
-        order: { id: order.id, total: order.total, status: 'pending' }
-      });
-    } catch (err) {
-      lastError = err;
-      console.error(`[Payment] ${endpoint} failed:`, err.response?.status, err.response?.data || err.message);
-    }
+  if (webhookUrl) {
+    payload.webhook_url = webhookUrl;
   }
 
-  throw lastError;
+  console.log(`[Payment] Mobile money: ${order.id}, phone: ${formattedPhone}, amount: ${order.total} ${CURRENCY}`);
+  console.log(`[Payment] Payload:`, JSON.stringify(payload, null, 2));
+
+  const response = await axios.post(`${SNIPPE_API}/v1/payments`, payload, {
+    headers: snippeHeaders(),
+    timeout: 20000
+  });
+
+  const data = response.data.data || response.data;
+  console.log(`[Payment] Snippe OK:`, JSON.stringify(data).substring(0, 500));
+
+  order.paymentId = data.reference || data.id;
+  order.paymentProvider = 'snippe';
+  order.paymentType = 'mobile';
+  order.paymentPhone = formattedPhone;
+  order.updatedAt = new Date().toISOString();
+
+  return res.json({
+    provider: 'snippe',
+    type: 'mobile',
+    paymentId: order.paymentId,
+    status: data.status || 'pending',
+    phone: formattedPhone,
+    message: `USSD imetumwa kwa ${formattedPhone}. Thibitisha malipo kwenye simu yako.`,
+    order: { id: order.id, total: order.total, status: 'pending' }
+  });
 }
 
 // ── Briq Card Payment ──────────────────────────────────────────────
@@ -189,9 +182,11 @@ async function initiateBriqCard(order, res) {
     success_url: callbackUrl,
     cancel_url: `${process.env.FRONTEND_URL}/checkout`,
     callback_url: callbackUrl,
-    webhook_url: getWebhookUrl(),
     return_url: callbackUrl
   };
+
+  const webhookUrl = getWebhookUrl();
+  if (webhookUrl) payload.webhook_url = webhookUrl;
 
   const endpoints = [
     `${BRIQ_URL}/v1/checkout/sessions`,
@@ -255,52 +250,52 @@ router.get('/status/:paymentId', async (req, res) => {
   if (!order) return res.status(404).json({ error: 'Payment not found' });
 
   if (order.paymentProvider === 'snippe' && SNIPPE_KEY) {
-    const statusUrls = SNIPPE_ENDPOINTS.map(ep => ep.replace('/payments', `/payments/${paymentId}`));
-    for (const url of statusUrls) {
-      try {
-        const response = await axios.get(url, { headers: snippeHeaders(), timeout: 10000 });
-        const data = response.data.data || response.data;
-        const status = data.status;
+    try {
+      const response = await axios.get(`${SNIPPE_API}/v1/payments/${paymentId}`, {
+        headers: snippeHeaders(), timeout: 10000
+      });
+      const data = response.data.data || response.data;
+      const status = data.status;
 
-        if ((status === 'completed' || status === 'succeeded') && order.status !== 'confirmed') {
-          order.status = 'confirmed';
-          order.statusHistory.push({
-            status: 'confirmed',
-            timestamp: new Date().toISOString(),
-            note: `Malipo yamekamilika (${data.channel?.provider || 'mobile money'})`
-          });
-          order.updatedAt = new Date().toISOString();
-          sendWhatsAppNotification(order);
-        }
-
-        if ((status === 'failed' || status === 'declined') && order.status === 'pending') {
-          order.status = 'cancelled';
-          order.statusHistory.push({
-            status: 'cancelled', timestamp: new Date().toISOString(), note: 'Malipo yameshindwa'
-          });
-          order.updatedAt = new Date().toISOString();
-        }
-
-        return res.json({
-          paymentId, status: order.status, provider: 'snippe',
-          orderId: order.id, providerStatus: status
+      if ((status === 'completed' || status === 'succeeded') && order.status !== 'confirmed') {
+        order.status = 'confirmed';
+        order.statusHistory.push({
+          status: 'confirmed',
+          timestamp: new Date().toISOString(),
+          note: `Malipo yamekamilika (${data.channel?.provider || 'mobile money'})`
         });
-      } catch { /* try next */ }
+        order.updatedAt = new Date().toISOString();
+        sendWhatsAppNotification(order);
+      }
+
+      if ((status === 'failed' || status === 'declined') && order.status === 'pending') {
+        order.status = 'cancelled';
+        order.statusHistory.push({
+          status: 'cancelled', timestamp: new Date().toISOString(), note: 'Malipo yameshindwa'
+        });
+        order.updatedAt = new Date().toISOString();
+      }
+
+      return res.json({
+        paymentId, status: order.status, provider: 'snippe',
+        orderId: order.id, providerStatus: status
+      });
+    } catch (err) {
+      console.log(`[Payment] Status check failed:`, err.response?.status, err.message);
     }
   }
 
   res.json({ paymentId, status: order.status, provider: order.paymentProvider || 'demo', orderId: order.id });
 });
 
-// ── Webhook (Snippe / Briq) ───────────────────────────────────────
+// ── Webhook ────────────────────────────────────────────────────────
 router.post('/webhook', async (req, res) => {
   console.log('[Webhook] Received:', JSON.stringify(req.body, null, 2));
   res.status(200).json({ received: true });
 
-  const body = req.body;
-
   try {
-    // Snippe format
+    const body = req.body;
+
     if (body.type && body.data) {
       const paymentData = body.data;
       const reference = paymentData.reference;
@@ -313,7 +308,7 @@ router.post('/webhook', async (req, res) => {
           order.statusHistory.push({
             status: 'confirmed',
             timestamp: new Date().toISOString(),
-            note: `Malipo yamekamilika: ${paymentData.channel?.provider || 'mobile money'} - ${paymentData.amount?.value || order.total} ${CURRENCY}`
+            note: `Malipo yamekamilika: ${paymentData.channel?.provider || 'mobile money'}`
           });
           order.updatedAt = new Date().toISOString();
           console.log(`[Webhook] Order ${order.id} CONFIRMED`);
@@ -324,13 +319,11 @@ router.post('/webhook', async (req, res) => {
             status: 'cancelled', timestamp: new Date().toISOString(), note: 'Malipo yameshindwa'
           });
           order.updatedAt = new Date().toISOString();
-          console.log(`[Webhook] Order ${order.id} FAILED`);
         }
       }
       return;
     }
 
-    // Generic format
     const orderId = body.orderId || body.order_id || body.reference || body.metadata?.order_id;
     const status = body.status || body.payment_status;
     const pId = body.paymentId || body.payment_id || body.id;
@@ -344,11 +337,10 @@ router.post('/webhook', async (req, res) => {
       if (newStatus === 'confirmed') await sendWhatsAppNotification(order);
     }
   } catch (err) {
-    console.error('[Webhook] Processing error:', err.message);
+    console.error('[Webhook] Error:', err.message);
   }
 });
 
-// ── WhatsApp notification after payment ────────────────────────────
 async function sendWhatsAppNotification(order) {
   try {
     await axios.post(
@@ -358,7 +350,7 @@ async function sendWhatsAppNotification(order) {
     );
     console.log(`[WhatsApp] Notification sent for ${order.id}`);
   } catch (err) {
-    console.log(`[WhatsApp] Notification failed for ${order.id}:`, err.message);
+    console.log(`[WhatsApp] Failed for ${order.id}:`, err.message);
   }
 }
 
