@@ -118,7 +118,6 @@ router.post('/initiate', async (req, res) => {
 async function initiateBriq(order, res) {
   const callbackUrl = `${process.env.FRONTEND_URL}/order-confirmation/${order.id}`;
 
-  // Try multiple Briq endpoint patterns
   const endpoints = [
     `${BRIQ_URL}/v1/checkout/sessions`,
     `${BRIQ_URL}/v1/payments`,
@@ -180,7 +179,6 @@ async function initiateBriq(order, res) {
         });
       }
 
-      // If no redirect URL, payment may be immediately processed
       if (data.status === 'completed' || data.status === 'paid' || data.status === 'succeeded') {
         order.status = 'confirmed';
         order.statusHistory.push({
