@@ -10,92 +10,81 @@ const APP_NAME = process.env.APP_NAME || 'ShopHub';
 const CURRENCY = process.env.CURRENCY || 'TZS';
 
 function cleanPhone(phone) {
-  return phone.replace(/[^0-9]/g, '');
+  let clean = phone.replace(/[^0-9]/g, '');
+  if (clean.startsWith('0')) clean = '255' + clean.substring(1);
+  if (!clean.startsWith('255')) clean = '255' + clean;
+  return clean;
 }
 
 function formatPrice(amount) {
   return `${Number(amount).toLocaleString()} ${CURRENCY}`;
 }
 
-// Ghala sends messages through the webhook URL base
-function getGhalaApiBase() {
-  if (!GHALA_WEBHOOK_URL) return null;
-  const url = new URL(GHALA_WEBHOOK_URL);
-  return `${url.protocol}//${url.host}`;
-}
-
+// Try multiple Ghala endpoints to find the one that works for sending
 async function sendViaGhala(to, messageBody) {
-  const apiBase = getGhalaApiBase();
-  if (!apiBase) return null;
+  if (!GHALA_WEBHOOK_URL) return null;
 
-  const phone = cleanPhone(to);
-  const formattedPhone = phone.startsWith('255') ? phone : `255${phone}`;
+  const formattedPhone = cleanPhone(to);
 
+  const whatsappPayload = {
+    messaging_product: 'whatsapp',
+    to: formattedPhone,
+    type: 'text',
+    text: { body: messageBody }
+  };
+
+  const simplePayload = {
+    to: formattedPhone,
+    message: messageBody,
+    type: 'text'
+  };
+
+  const authHeaders = {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${GHALA_VERIFY_TOKEN}`
+  };
+
+  // Extract base from webhook URL: https://api.ghala.io/webhook/{token} -> https://api.ghala.io
+  let apiBase;
   try {
-    const response = await axios.post(`${apiBase}/v1/messages`, {
-      messaging_product: 'whatsapp',
-      to: formattedPhone,
-      type: 'text',
-      text: { body: messageBody }
-    }, {
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${GHALA_VERIFY_TOKEN}`
-      },
-      timeout: 15000
-    });
+    const url = new URL(GHALA_WEBHOOK_URL);
+    apiBase = `${url.protocol}//${url.host}`;
+  } catch { return null; }
 
-    return {
-      sent: true,
-      provider: 'ghala',
-      messageId: response.data?.messages?.[0]?.id || response.data?.id || response.data?.message_id,
-      to: formattedPhone
-    };
-  } catch (error) {
-    console.error('Ghala send failed:', error.response?.data || error.message);
-    return null;
+  // Try multiple endpoint patterns
+  const attempts = [
+    { url: `${apiBase}/v1/messages/send`, payload: simplePayload },
+    { url: `${apiBase}/api/v1/messages`, payload: whatsappPayload },
+    { url: `${apiBase}/messages/send`, payload: simplePayload },
+    { url: `${apiBase}/api/messages/send`, payload: simplePayload },
+    { url: `${apiBase}/send`, payload: simplePayload },
+    { url: GHALA_WEBHOOK_URL, payload: { type: 'send_message', to: formattedPhone, message: messageBody } },
+  ];
+
+  for (const attempt of attempts) {
+    try {
+      const response = await axios.post(attempt.url, attempt.payload, {
+        headers: authHeaders,
+        timeout: 10000
+      });
+
+      console.log(`[Ghala] Sent via ${attempt.url}:`, response.status);
+      return {
+        sent: true,
+        provider: 'ghala',
+        messageId: response.data?.messages?.[0]?.id || response.data?.id || response.data?.message_id,
+        to: formattedPhone
+      };
+    } catch (err) {
+      const status = err.response?.status;
+      const detail = err.response?.data?.detail || err.response?.data?.message || err.message;
+      console.log(`[Ghala] ${attempt.url} -> ${status}: ${detail}`);
+      // 404 or 405 means wrong endpoint, keep trying. 401/403 means auth issue, stop.
+      if (status === 401 || status === 403) break;
+    }
   }
-}
 
-async function sendInteractiveViaGhala(to, bodyText, buttons) {
-  const apiBase = getGhalaApiBase();
-  if (!apiBase) return null;
-
-  const phone = cleanPhone(to);
-  const formattedPhone = phone.startsWith('255') ? phone : `255${phone}`;
-
-  try {
-    const response = await axios.post(`${apiBase}/v1/messages`, {
-      messaging_product: 'whatsapp',
-      to: formattedPhone,
-      type: 'interactive',
-      interactive: {
-        type: 'button',
-        body: { text: bodyText },
-        action: {
-          buttons: buttons.map((btn, i) => ({
-            type: 'reply',
-            reply: { id: btn.id || `btn_${i}`, title: btn.title.substring(0, 20) }
-          }))
-        }
-      }
-    }, {
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${GHALA_VERIFY_TOKEN}`
-      },
-      timeout: 15000
-    });
-
-    return {
-      sent: true,
-      provider: 'ghala',
-      messageId: response.data?.messages?.[0]?.id || response.data?.id
-    };
-  } catch (error) {
-    console.error('Ghala interactive send failed:', error.response?.data || error.message);
-    return null;
-  }
+  return null;
 }
 
 // ── Webhook verification (GET) ─────────────────────────────────────
@@ -105,197 +94,139 @@ router.get('/webhook', (req, res) => {
   const challenge = req.query['hub.challenge'];
 
   if (mode === 'subscribe' && token === GHALA_VERIFY_TOKEN) {
-    console.log('Ghala webhook verified successfully');
+    console.log('[Ghala] Webhook verified');
     return res.status(200).send(challenge);
   }
 
-  console.warn('Webhook verification failed:', { mode, tokenMatch: token === GHALA_VERIFY_TOKEN });
+  console.warn('[Ghala] Webhook verification failed');
   res.sendStatus(403);
 });
 
 // ── Receive incoming WhatsApp messages (POST) ──────────────────────
 router.post('/webhook', async (req, res) => {
-  console.log('WhatsApp webhook received:', JSON.stringify(req.body, null, 2));
-
+  console.log('[WhatsApp] Webhook:', JSON.stringify(req.body, null, 2));
   res.status(200).json({ received: true });
 
   try {
     const body = req.body;
+    let messages = [];
 
-    if (body.object === 'whatsapp_business_account' || body.entry) {
-      for (const entry of (body.entry || [])) {
+    if (body.entry) {
+      for (const entry of body.entry) {
         for (const change of (entry.changes || [])) {
-          const value = change.value || {};
-          const messages = value.messages || [];
-
-          for (const msg of messages) {
-            await handleIncomingMessage(msg, value.contacts);
-          }
+          messages.push(...(change.value?.messages || []));
         }
       }
     } else if (body.from && (body.message || body.text)) {
-      await handleIncomingMessage({
+      messages.push({
         from: body.from,
         type: body.type || 'text',
         text: { body: body.message?.body || body.text || body.message }
       });
     }
+
+    for (const msg of messages) {
+      await handleIncomingMessage(msg);
+    }
   } catch (error) {
-    console.error('Webhook processing error:', error.message);
+    console.error('[WhatsApp] Webhook error:', error.message);
   }
 });
 
-async function handleIncomingMessage(msg, contacts) {
+async function handleIncomingMessage(msg) {
   const from = msg.from;
-  const msgType = msg.type;
   const text = (msg.text?.body || msg.button?.text || '').trim();
-  const textLower = text.toLowerCase();
+  const lower = text.toLowerCase();
 
-  console.log(`[WhatsApp] From: ${from}, Type: ${msgType}, Text: "${text}"`);
-
+  console.log(`[WhatsApp] From: ${from}, Text: "${text}"`);
   if (!text) return;
 
-  if (textLower === 'hi' || textLower === 'hello' || textLower === 'hey' || textLower === 'habari') {
+  if (['hi', 'hello', 'hey', 'habari', 'mambo'].includes(lower)) {
     await sendViaGhala(from,
-      `👋 Welcome to *${APP_NAME}*!\n\n`
-      + `I can help you with:\n`
-      + `📦 *order <ID>* - Check order status\n`
-      + `🛍️ *products* - Browse our products\n`
-      + `🏷️ *deals* - See current deals\n`
-      + `❓ *help* - Get assistance\n\n`
-      + `What would you like to do?`
+      `👋 Karibu *${APP_NAME}*!\n\n`
+      + `Nikusaidie nini?\n`
+      + `📦 *order ORD-1001* - Angalia oda\n`
+      + `🛍️ *products* - Tazama bidhaa\n`
+      + `🏷️ *deals* - Punguzo\n`
+      + `❓ *help* - Msaada`
     );
     return;
   }
 
-  if (textLower === 'help' || textLower === 'menu' || textLower === 'msaada') {
+  if (['help', 'menu', 'msaada'].includes(lower)) {
     await sendViaGhala(from,
       `📋 *${APP_NAME} Menu*\n\n`
-      + `Here's what I can do:\n\n`
-      + `1️⃣ Type *order ORD-1001* to check an order\n`
-      + `2️⃣ Type *products* to see featured items\n`
-      + `3️⃣ Type *deals* to see discounted items\n`
-      + `4️⃣ Type *categories* to browse by category\n`
-      + `5️⃣ Type *cart* info about shopping\n\n`
-      + `Or just describe what you're looking for! 🔍`
+      + `1️⃣ *order ORD-1001* - Angalia oda\n`
+      + `2️⃣ *products* - Bidhaa zilizo featured\n`
+      + `3️⃣ *deals* - Punguzo kubwa\n`
+      + `4️⃣ *categories* - Aina za bidhaa\n\n`
+      + `Au andika unachotafuta! 🔍`
     );
     return;
   }
 
-  const orderMatch = textLower.match(/ord-(\d+)/i) || textLower.match(/order\s+(\d+)/i);
-  if (orderMatch || textLower.startsWith('order')) {
-    const orderId = orderMatch ? `ORD-${orderMatch[1]}` : null;
-    if (orderId) {
-      const order = orders.find(o => o.id === orderId);
-      if (order) {
-        const statusEmoji = {
-          pending: '⏳', confirmed: '✅', processing: '📦', shipped: '🚚', delivered: '🎉', cancelled: '❌'
-        };
-        const itemList = order.items
-          .map(i => `  • ${i.name} x${i.quantity}`)
-          .join('\n');
-
-        await sendViaGhala(from,
-          `${statusEmoji[order.status] || '📋'} *Order: ${order.id}*\n\n`
-          + `Status: *${order.status.toUpperCase()}*\n`
-          + `Date: ${new Date(order.createdAt).toLocaleDateString()}\n\n`
-          + `📝 Items:\n${itemList}\n\n`
-          + `💰 Total: *${formatPrice(order.total)}*\n\n`
-          + `Need help? Just reply here!`
-        );
-      } else {
-        await sendViaGhala(from, `❌ Order *${orderId}* not found. Please check the order ID and try again.`);
-      }
+  const orderMatch = lower.match(/ord-(\d+)/i) || lower.match(/order\s+(\d+)/i);
+  if (orderMatch) {
+    const orderId = `ORD-${orderMatch[1]}`;
+    const order = orders.find(o => o.id === orderId);
+    if (order) {
+      const emoji = { pending: '⏳', confirmed: '✅', processing: '📦', shipped: '🚚', delivered: '🎉', cancelled: '❌' };
+      const items = order.items.map(i => `  • ${i.name} x${i.quantity}`).join('\n');
+      await sendViaGhala(from,
+        `${emoji[order.status] || '📋'} *Oda: ${order.id}*\n\n`
+        + `Status: *${order.status === 'confirmed' ? 'IMELIPWA' : order.status === 'pending' ? 'HAIJALIPWA' : order.status.toUpperCase()}*\n\n`
+        + `📝 Bidhaa:\n${items}\n\n`
+        + `💰 Jumla: *${formatPrice(order.total)}*`
+      );
     } else {
-      await sendViaGhala(from, `📦 To check an order, type: *order ORD-1001*\n\n(Replace 1001 with your order number)`);
+      await sendViaGhala(from, `❌ Oda *${orderId}* haijapatikana.`);
     }
     return;
   }
 
-  if (textLower === 'products' || textLower === 'bidhaa' || textLower === 'shop') {
+  if (['products', 'bidhaa', 'shop'].includes(lower)) {
     const featured = products.filter(p => p.featured).slice(0, 5);
-    const list = featured
-      .map((p, i) => `${i + 1}. *${p.name}*\n   ${formatPrice(p.price)} (was ${formatPrice(p.originalPrice)})`)
-      .join('\n\n');
-
-    await sendViaGhala(from,
-      `🛍️ *Featured Products*\n\n${list}\n\n`
-      + `Visit our store to order: ${process.env.FRONTEND_URL || 'our website'}\n\n`
-      + `Type a product name for more details!`
-    );
+    const list = featured.map((p, i) => `${i + 1}. *${p.name}*\n   ${formatPrice(p.price)}`).join('\n\n');
+    await sendViaGhala(from, `🛍️ *Bidhaa*\n\n${list}\n\n🌐 ${process.env.FRONTEND_URL || 'Tembelea duka letu'}`);
     return;
   }
 
-  if (textLower === 'deals' || textLower === 'offers' || textLower === 'punguzo') {
+  if (['deals', 'offers', 'punguzo'].includes(lower)) {
     const deals = products
       .map(p => ({ ...p, discount: Math.round(((p.originalPrice - p.price) / p.originalPrice) * 100) }))
       .sort((a, b) => b.discount - a.discount)
       .slice(0, 5);
-
-    const list = deals
-      .map((p, i) => `${i + 1}. *${p.name}* 🔥 ${p.discount}% OFF\n   ${formatPrice(p.price)} ~~${formatPrice(p.originalPrice)}~~`)
-      .join('\n\n');
-
-    await sendViaGhala(from,
-      `🏷️ *Best Deals Right Now*\n\n${list}\n\n`
-      + `Shop now: ${process.env.FRONTEND_URL || 'our website'}`
-    );
+    const list = deals.map((p, i) => `${i + 1}. *${p.name}* 🔥 -${p.discount}%\n   ${formatPrice(p.price)}`).join('\n\n');
+    await sendViaGhala(from, `🏷️ *Punguzo*\n\n${list}\n\n🌐 ${process.env.FRONTEND_URL || 'Tembelea duka letu'}`);
     return;
   }
 
-  if (textLower === 'categories' || textLower === 'aina') {
-    await sendViaGhala(from,
-      `📂 *Product Categories*\n\n`
-      + `💻 *Electronics* - Headphones, trackers, chargers\n`
-      + `👔 *Clothing* - Hoodies, scarves\n`
-      + `⌚ *Accessories* - Watches, bags\n`
-      + `🏠 *Home & Living* - Coffee makers, lamps, decor\n\n`
-      + `Visit ${process.env.FRONTEND_URL || 'our store'} to browse!`
-    );
+  if (['categories', 'aina'].includes(lower)) {
+    await sendViaGhala(from, `📂 *Aina za Bidhaa*\n\n💻 Electronics\n👔 Clothing\n⌚ Accessories\n🏠 Home & Living`);
     return;
   }
 
-  const searchResults = products.filter(p =>
-    p.name.toLowerCase().includes(textLower) ||
-    p.tags.some(t => t.toLowerCase().includes(textLower)) ||
-    p.category.includes(textLower)
+  const results = products.filter(p =>
+    p.name.toLowerCase().includes(lower) || p.tags.some(t => t.includes(lower)) || p.category.includes(lower)
   ).slice(0, 3);
 
-  if (searchResults.length > 0) {
-    const list = searchResults
-      .map(p => `🛒 *${p.name}*\n   ${formatPrice(p.price)}\n   ${p.shortDescription}`)
-      .join('\n\n');
-
-    await sendViaGhala(from,
-      `🔍 Found ${searchResults.length} result(s):\n\n${list}\n\n`
-      + `Shop at: ${process.env.FRONTEND_URL || 'our website'}`
-    );
+  if (results.length > 0) {
+    const list = results.map(p => `🛒 *${p.name}*\n   ${formatPrice(p.price)}`).join('\n\n');
+    await sendViaGhala(from, `🔍 Nimeona:\n\n${list}\n\n🌐 ${process.env.FRONTEND_URL || 'Nunua sasa'}`);
     return;
   }
 
   await sendViaGhala(from,
-    `Thanks for your message! 😊\n\n`
-    + `I didn't quite understand that. Try:\n`
-    + `• *help* - See what I can do\n`
-    + `• *products* - Browse our store\n`
-    + `• *order ORD-1001* - Check an order\n\n`
-    + `Or visit: ${process.env.FRONTEND_URL || 'our website'}`
+    `Asante kwa ujumbe! 😊\n\nJaribu:\n• *help* - Menu\n• *products* - Bidhaa\n• *order ORD-1001* - Oda\n\n🌐 ${process.env.FRONTEND_URL || ''}`
   );
 }
 
-// ── QR code and link generation ────────────────────────────────────
+// ── QR code and link endpoints ─────────────────────────────────────
 router.get('/qr-data', (req, res) => {
   const phone = cleanPhone(WHATSAPP_NUMBER);
-  const message = encodeURIComponent(
-    `Hi! I'm interested in shopping at ${APP_NAME}. Can you help me find some products?`
-  );
+  const message = encodeURIComponent(`Hi! Nataka kununua bidhaa kwenye ${APP_NAME}`);
   const whatsappUrl = `https://wa.me/${phone}?text=${message}`;
-
-  res.json({
-    url: whatsappUrl,
-    phone: WHATSAPP_NUMBER,
-    qrValue: whatsappUrl
-  });
+  res.json({ url: whatsappUrl, phone: WHATSAPP_NUMBER, qrValue: whatsappUrl });
 });
 
 router.get('/product-link/:productId', (req, res) => {
@@ -303,15 +234,8 @@ router.get('/product-link/:productId', (req, res) => {
   if (!product) return res.status(404).json({ error: 'Product not found' });
 
   const phone = cleanPhone(WHATSAPP_NUMBER);
-  const message = encodeURIComponent(
-    `Hi! I'm interested in: *${product.name}*\nPrice: ${formatPrice(product.price)}\n\nCan I get more details?`
-  );
-  const whatsappUrl = `https://wa.me/${phone}?text=${message}`;
-
-  res.json({
-    url: whatsappUrl,
-    product: { id: product.id, name: product.name, price: product.price }
-  });
+  const message = encodeURIComponent(`Habari! Nahitaji: *${product.name}*\nBei: ${formatPrice(product.price)}`);
+  res.json({ url: `https://wa.me/${phone}?text=${message}`, product: { id: product.id, name: product.name, price: product.price } });
 });
 
 router.get('/order-update/:orderId', (req, res) => {
@@ -319,41 +243,29 @@ router.get('/order-update/:orderId', (req, res) => {
   if (!order) return res.status(404).json({ error: 'Order not found' });
 
   const phone = cleanPhone(WHATSAPP_NUMBER);
-  const statusEmoji = {
-    pending: '⏳', confirmed: '✅', processing: '📦', shipped: '🚚', delivered: '🎉', cancelled: '❌'
-  };
+  const emoji = { pending: '⏳', confirmed: '✅', processing: '📦', shipped: '🚚', delivered: '🎉', cancelled: '❌' };
   const message = encodeURIComponent(
-    `${statusEmoji[order.status] || '📋'} *Order Update: ${order.id}*\n\nStatus: ${order.status.toUpperCase()}\nTotal: ${formatPrice(order.total)}\nItems: ${order.items.length}\n\nThank you for shopping with ${APP_NAME}!`
+    `${emoji[order.status] || '📋'} *Oda: ${order.id}*\nStatus: ${order.status.toUpperCase()}\nJumla: ${formatPrice(order.total)}`
   );
-  const whatsappUrl = `https://wa.me/${phone}?text=${message}`;
-
-  res.json({
-    url: whatsappUrl,
-    order: { id: order.id, status: order.status }
-  });
+  res.json({ url: `https://wa.me/${phone}?text=${message}`, order: { id: order.id, status: order.status } });
 });
 
-// ── Send notifications ─────────────────────────────────────────────
+// ── Send order notification ────────────────────────────────────────
 router.post('/send-order-notification', async (req, res) => {
   const { orderId } = req.body;
   const order = orders.find(o => o.id === orderId);
   if (!order) return res.status(404).json({ error: 'Order not found' });
 
-  const customerPhone = order.customer.phone.replace(/[^0-9+]/g, '');
-  const statusEmoji = {
-    pending: '⏳', confirmed: '✅', processing: '📦', shipped: '🚚', delivered: '🎉'
-  };
+  const customerPhone = order.customer.phone;
+  const emoji = { pending: '⏳', confirmed: '✅', processing: '📦', shipped: '🚚', delivered: '🎉' };
+  const items = order.items.map(i => `  • ${i.name} x${i.quantity} — ${formatPrice(i.price * i.quantity)}`).join('\n');
 
-  const itemList = order.items
-    .map(i => `  • ${i.name} x${i.quantity} — ${formatPrice(i.price * i.quantity)}`)
-    .join('\n');
-
-  const message = `${statusEmoji[order.status] || '📋'} *${APP_NAME} Order Update*\n\n`
-    + `Order: *${order.id}*\n`
-    + `Status: *${order.status.toUpperCase()}*\n\n`
-    + `📝 Items:\n${itemList}\n\n`
-    + `💰 Total: *${formatPrice(order.total)}*\n\n`
-    + `Thank you for shopping with us! Reply to this message for support.`;
+  const message = `${emoji[order.status] || '📋'} *${APP_NAME}*\n\n`
+    + `Oda: *${order.id}*\n`
+    + `Status: *${order.status === 'confirmed' ? 'IMELIPWA ✅' : order.status === 'pending' ? 'INASUBIRI MALIPO' : order.status.toUpperCase()}*\n\n`
+    + `📝 Bidhaa:\n${items}\n\n`
+    + `💰 Jumla: *${formatPrice(order.total)}*\n\n`
+    + `Asante kwa kununua! Jibu ujumbe huu kwa msaada.`;
 
   const ghalaResult = await sendViaGhala(customerPhone, message);
   if (ghalaResult) {
@@ -365,24 +277,21 @@ router.post('/send-order-notification', async (req, res) => {
     sent: false,
     fallback: true,
     whatsappUrl: waLink,
-    message: 'Automatic WhatsApp sending not available. Use the link to send manually.'
+    message: 'WhatsApp haijatumwa kiotomatiki. Tumia link kutuma mwenyewe.'
   });
 });
 
 router.post('/send-message', async (req, res) => {
   const { to, message } = req.body;
-  if (!to || !message) return res.status(400).json({ error: 'to and message are required' });
+  if (!to || !message) return res.status(400).json({ error: 'to and message required' });
 
-  const ghalaResult = await sendViaGhala(to, message);
-  if (ghalaResult) {
-    return res.json(ghalaResult);
-  }
+  const result = await sendViaGhala(to, message);
+  if (result) return res.json(result);
 
   res.json({
     sent: false,
     fallback: true,
-    whatsappUrl: `https://wa.me/${cleanPhone(to)}?text=${encodeURIComponent(message)}`,
-    message: 'Automatic sending not available. Use the WhatsApp link instead.'
+    whatsappUrl: `https://wa.me/${cleanPhone(to)}?text=${encodeURIComponent(message)}`
   });
 });
 
