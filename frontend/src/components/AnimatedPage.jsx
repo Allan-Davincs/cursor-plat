@@ -1,8 +1,10 @@
 import { motion } from "framer-motion";
 
 function AnimatedPage({ children }) {
+  const MotionSection = motion.section;
+
   return (
-    <motion.section
+    <MotionSection
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -8 }}
@@ -10,7 +12,7 @@ function AnimatedPage({ children }) {
       className="mx-auto w-full max-w-7xl px-4 pb-14 pt-6 sm:px-6 lg:px-8"
     >
       {children}
-    </motion.section>
+    </MotionSection>
   );
 }
 

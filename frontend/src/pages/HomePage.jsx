@@ -23,6 +23,7 @@ function HomePage() {
   const [category, setCategory] = useState("all");
   const [botReply, setBotReply] = useState("");
   const [botLoading, setBotLoading] = useState(false);
+  const MotionDiv = motion.div;
 
   useEffect(() => {
     let mounted = true;
@@ -126,13 +127,13 @@ function HomePage() {
         {loading ? (
           <PageLoader label="Curating products..." />
         ) : (
-          <motion.div layout className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          <MotionDiv layout className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             <AnimatePresence>
               {products.map((product) => (
                 <ProductCard key={product.id} product={product} />
               ))}
             </AnimatePresence>
-          </motion.div>
+          </MotionDiv>
         )}
       </section>
     </AnimatedPage>

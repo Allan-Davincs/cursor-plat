@@ -6,6 +6,7 @@ import { useCart } from "../context/CartContext";
 
 function CartPage() {
   const { items, totals, updateQuantity, removeFromCart } = useCart();
+  const MotionArticle = motion.article;
 
   return (
     <AnimatedPage>
@@ -37,7 +38,7 @@ function CartPage() {
           <div className="space-y-3">
             <AnimatePresence>
               {items.map((entry) => (
-                <motion.article
+                <MotionArticle
                   key={entry.product.id}
                   layout
                   initial={{ opacity: 0, y: 15 }}
@@ -96,7 +97,7 @@ function CartPage() {
                       </strong>
                     </div>
                   </div>
-                </motion.article>
+                </MotionArticle>
               ))}
             </AnimatePresence>
           </div>

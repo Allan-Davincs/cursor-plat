@@ -23,6 +23,7 @@ function Navbar() {
   const { totals } = useCart();
   const { theme, toggleTheme } = useTheme();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const MotionDiv = motion.div;
 
   const cartLabel = useMemo(
     () => `${totals.totalItems} item${totals.totalItems === 1 ? "" : "s"}`,
@@ -81,7 +82,7 @@ function Navbar() {
 
       <AnimatePresence>
         {mobileOpen ? (
-          <motion.div
+          <MotionDiv
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: "auto" }}
             exit={{ opacity: 0, height: 0 }}
@@ -118,7 +119,7 @@ function Navbar() {
             <div className="mt-3">
               <WhatsAppQR />
             </div>
-          </motion.div>
+          </MotionDiv>
         ) : null}
       </AnimatePresence>
     </header>

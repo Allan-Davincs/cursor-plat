@@ -34,7 +34,7 @@ function WhatsAppQR({
         if (mounted) {
           setQrData(data);
         }
-      } catch (_error) {
+      } catch {
         if (mounted) {
           setQrData(fallbackData(phone, text));
         }

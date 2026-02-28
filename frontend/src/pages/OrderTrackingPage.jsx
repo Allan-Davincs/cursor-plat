@@ -25,7 +25,7 @@ function OrderTrackingPage() {
     try {
       const data = await getOrder(value);
       setOrder(data);
-    } catch (_error) {
+    } catch {
       setOrder(null);
       toast.error("Order not found.");
     } finally {

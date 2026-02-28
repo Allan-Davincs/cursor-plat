@@ -7,7 +7,7 @@ const loadCart = () => {
   try {
     const raw = localStorage.getItem(CART_STORAGE_KEY);
     return raw ? JSON.parse(raw) : [];
-  } catch (_error) {
+  } catch {
     return [];
   }
 };
@@ -66,17 +66,14 @@ export const CartProvider = ({ children }) => {
     };
   }, [items]);
 
-  const value = useMemo(
-    () => ({
-      items,
-      totals,
-      addToCart,
-      removeFromCart,
-      updateQuantity,
-      clearCart,
-    }),
-    [items, totals],
-  );
+  const value = {
+    items,
+    totals,
+    addToCart,
+    removeFromCart,
+    updateQuantity,
+    clearCart,
+  };
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;
 };

@@ -13,7 +13,7 @@ export const useOrderStream = (orderId, onUpdate) => {
     source.addEventListener("ready", (event) => {
       try {
         onUpdate?.(JSON.parse(event.data));
-      } catch (_error) {
+      } catch {
         // ignore malformed payloads
       }
     });
@@ -21,7 +21,7 @@ export const useOrderStream = (orderId, onUpdate) => {
     source.addEventListener("update", (event) => {
       try {
         onUpdate?.(JSON.parse(event.data));
-      } catch (_error) {
+      } catch {
         // ignore malformed payloads
       }
     });

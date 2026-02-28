@@ -5,9 +5,10 @@ import { useCart } from "../context/CartContext";
 
 function ProductCard({ product }) {
   const { addToCart } = useCart();
+  const MotionArticle = motion.article;
 
   return (
-    <motion.article
+    <MotionArticle
       layout
       whileHover={{ y: -4 }}
       className="group overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm transition dark:border-zinc-700 dark:bg-zinc-900"
@@ -56,7 +57,7 @@ function ProductCard({ product }) {
           </button>
         </div>
       </div>
-    </motion.article>
+    </MotionArticle>
   );
 }
 
